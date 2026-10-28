@@ -26,8 +26,10 @@ npm run dev
 Открыть http://localhost:5173
 
 ## Выкладка
-- Приложение: https://football-tournaments-chi.vercel.app (Vercel, проект `football-tournaments`)
+- Приложение: https://lavos733.github.io/football-tournaments/ (GitHub Pages, ветка `gh-pages`)
 - Обновить сайт: `npm run deploy`
+- Код: https://github.com/lavos733/football-tournaments
+- Vercel (`npm run deploy:vercel`) остался запасным вариантом — в России `*.vercel.app` блокируется
 - Обновить функцию входа: `npm run deploy:auth`
 - Секрет бота: Supabase → Edge Functions → Secrets → `TELEGRAM_BOT_TOKEN`
 
