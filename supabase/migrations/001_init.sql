@@ -79,7 +79,7 @@ create table public.tournaments (
   id          uuid primary key default gen_random_uuid(),
   name        text not null check (length(trim(name)) > 0),
   format      smallint not null check (format in (5, 8)),
-  rounds      smallint not null default 1 check (rounds between 1 and 4),
+  rounds      smallint not null default 1 check (rounds between 1 and 7),
   status      text not null default 'draft' check (status in ('draft', 'active', 'finished')),
   created_by  uuid not null default auth.uid() references public.profiles on delete restrict,
   created_at  timestamptz not null default now()

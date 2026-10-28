@@ -61,7 +61,7 @@ export function TournamentForm({
           <Segmented<number>
             value={rounds}
             onChange={setRounds}
-            options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n) }))}
+            options={[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: n, label: String(n) }))}
           />
         </Field>
         <button className="btn btn-primary btn-block" disabled={busy || !name.trim()}>
