@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.local
+
+.vercel
+.env*
+!.env.example
+.claude
+supabase/.temp
