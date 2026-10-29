@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, processLock } from '@supabase/supabase-js'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 // новый формат ключа (sb_publishable_…) или старый anon-ключ
@@ -6,7 +6,22 @@ const key = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VI
 
 export const isConfigured = Boolean(url && key)
 
-export const supabase = createClient(url ?? 'http://localhost', key ?? 'missing')
+// processLock — блокировка сессии внутри одной копии приложения. Стандартная (navigator.locks) общая
+// для всех копий: в Telegram зависшая в фоне копия могла держать её, и вход вставал на «Входим…».
+export const supabase = createClient(url ?? 'http://localhost', key ?? 'missing', { auth: { lock: processLock } })
+
+/** Стереть сохранённую сессию Supabase из браузера (если она испорчена или зависла). */
+export function clearStoredSession() {
+  for (const k of Object.keys(localStorage)) if (k.startsWith('sb-')) localStorage.removeItem(k)
+}
+
+/** Промис с ограничением по времени: вместо вечного ожидания — понятная ошибка. */
+export function withTimeout<T>(p: PromiseLike<T>, ms: number, step: string): Promise<T> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Сервер не ответил (${step}). Проверьте интернет и попробуйте снова.`)), ms)),
+  ])
+}
 
 /** Достаёт data из ответа Supabase или бросает его ошибку. Тип результата указывается приведением на месте вызова. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

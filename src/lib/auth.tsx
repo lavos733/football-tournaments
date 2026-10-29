@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { FunctionsHttpError } from '@supabase/supabase-js'
-import { errText, q, supabase } from './supabase'
+import { FunctionsHttpError, type Session } from '@supabase/supabase-js'
+import { clearStoredSession, errText, q, supabase, withTimeout } from './supabase'
 import { inTelegram, tg } from './telegram'
 import type { Profile } from './types'
 
@@ -59,21 +59,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true)
       setError(null)
       try {
-        const { data } = await supabase.auth.getSession()
-        let id = data.session?.user.id ?? null
+        // «Попробовать снова» начинает с чистого листа: старая сессия могла испортиться
+        if (attempt > 0 && inTelegram) clearStoredSession()
+
+        let session: Session | null = null
+        try {
+          session = (await withTimeout(supabase.auth.getSession(), 8000, 'проверка сессии')).data.session
+        } catch {
+          // сохранённая сессия не читается — забываем её и входим заново
+          clearStoredSession()
+        }
+        let id = session?.user.id ?? null
 
         if (inTelegram) {
           // заходим заново, если сессии нет или она от другого Telegram-аккаунта
           const tgId = tg?.initDataUnsafe?.user?.id
-          if (!id || data.session?.user.user_metadata?.telegram_id !== tgId) {
-            if (id) await supabase.auth.signOut()
-            id = await telegramSignIn()
+          if (!id || session?.user.user_metadata?.telegram_id !== tgId) {
+            if (id) await withTimeout(supabase.auth.signOut({ scope: 'local' }), 5000, 'выход').catch(clearStoredSession)
+            id = await withTimeout(telegramSignIn(), 20000, 'вход через Telegram')
           }
         }
 
         if (!alive) return
         setUserId(id)
-        await loadProfile(id)
+        await withTimeout(loadProfile(id), 10000, 'загрузка профиля')
       } catch (e) {
         if (alive) setError(errText(e))
       } finally {
