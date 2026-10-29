@@ -22,13 +22,20 @@ export default function TournamentTeamPage() {
   const [editing, setEditing] = useState(false)
 
   const { data, loading, error, reload } = useQuery(async () => {
-    const [t, teams, roster, taken] = await Promise.all([
+    const [t, teams, roster, taken, judges] = await Promise.all([
       q(supabase.from('tournaments').select('*').eq('id', id!).single()),
       q(supabase.from('tournament_teams').select('*').eq('tournament_id', id!)),
       q(supabase.from('roster_entries').select('*, player:players(*)').eq('tournament_team_id', teamId!)),
       q(supabase.from('roster_entries').select('player_id, tournament_team_id').eq('tournament_id', id!)),
+      q(supabase.from('tournament_judges').select('profile_id').eq('tournament_id', id!)),
     ])
-    return { t: t as Tournament, teams: teams as TournamentTeam[], roster: roster as Entry[], taken: taken as TakenRow[] }
+    return {
+      t: t as Tournament,
+      teams: teams as TournamentTeam[],
+      roster: roster as Entry[],
+      taken: taken as TakenRow[],
+      judges: (judges as { profile_id: string }[]).map((j) => j.profile_id),
+    }
   }, [id, teamId])
 
   const back = `/tournaments/${id}`
@@ -39,9 +46,9 @@ export default function TournamentTeamPage() {
   const team = teams.find((x) => x.id === teamId)
   if (!team) return <Page title="Команда" back={back}><ErrorBox text="Команда не найдена" /></Page>
 
-  const isOwner = t.created_by === userId
-  const canEditRoster = isOwner && t.status !== 'finished'
-  const canEditTeam = isOwner && t.status === 'draft'
+  const canManage = t.created_by === userId || data.judges.includes(userId!)
+  const canEditRoster = canManage && t.status !== 'finished'
+  const canEditTeam = canManage && t.status === 'draft'
   const [min, max] = ROSTER_LIMITS[t.format]
   const roster = [...data.roster].sort((a, b) => (a.number ?? 999) - (b.number ?? 999) || fullName(a.player).localeCompare(fullName(b.player), 'ru'))
   const count = roster.length

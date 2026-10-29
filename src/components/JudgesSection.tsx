@@ -7,7 +7,7 @@ import { Loading, Section, Sheet } from './ui'
 
 export type JudgeRow = { profile_id: string; profile: { display_name: string; username: string | null } | null }
 
-/** Помощники-судьи: могут вести матчи (счёт, события), но не менять сам турнир. */
+/** Судьи управляют турниром наравне с организатором; удалить турнир и назначать судей может только организатор. */
 export function JudgesSection({
   tournamentId,
   ownerId,
@@ -70,7 +70,7 @@ export function JudgesSection({
       }
     >
       {judges.length === 0 ? (
-        <div className="card state">Судьи могут вводить счёт и события матчей вместо вас.</div>
+        <div className="card state">Судьи могут всё то же, что и вы: команды, заявки, расписание, матчи и завершение турнира. Удалить турнир и назначать судей можете только вы.</div>
       ) : (
         <div className="list card">
           {judges.map((j) => (

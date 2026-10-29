@@ -59,8 +59,10 @@ export default function TournamentPage() {
 
   const { t, teams, matches } = data
   const isOwner = t.created_by === userId
+  // судьи управляют турниром наравне с организатором; удалить турнир и назначать судей — только организатор
+  const canManage = isOwner || data.judges.some((j) => j.profile_id === userId)
   const isDraft = t.status === 'draft'
-  const canEditTeams = isOwner && isDraft
+  const canEditTeams = canManage && isDraft
   const [min, max] = ROSTER_LIMITS[t.format]
   const currentTab = tab ?? (isDraft && matches.length === 0 ? 'teams' : 'matches')
 
@@ -153,7 +155,7 @@ export default function TournamentPage() {
       title={t.name}
       back="/tournaments"
       actions={
-        isOwner && (
+        canManage && (
           <button className="btn btn-ghost btn-sm" onClick={() => setSettings(true)}>
             Настройки
           </button>
@@ -189,7 +191,7 @@ export default function TournamentPage() {
             <div className="champion-name">
               <TeamBadge color={champion.color} /> {champion.name}
             </div>
-            {isOwner ? (
+            {canManage ? (
               <label className="field champion-mvp">
                 <span className="field-label">⭐ Лучший игрок турнира</span>
                 <MvpSelect value={t.mvp_player_id ?? ''} onChange={setMvp} teams={teams} players={data.players} rosterTeam={data.rosterTeam} disabled={busy} />
@@ -309,7 +311,7 @@ export default function TournamentPage() {
               </button>
             </>
           )}
-          {isOwner && t.status === 'active' && (
+          {canManage && t.status === 'active' && (
             <>
               <button className="btn btn-primary btn-block" disabled={busy || !allFinished} onClick={() => setFinishing(true)}>
                 Завершить турнир
@@ -322,7 +324,7 @@ export default function TournamentPage() {
               )}
             </>
           )}
-          {isOwner && t.status === 'finished' && (
+          {canManage && t.status === 'finished' && (
             <button className="btn btn-ghost btn-block" disabled={busy} onClick={reopen}>
               Возобновить турнир
             </button>
