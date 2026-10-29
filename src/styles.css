@@ -1122,3 +1122,45 @@ select {
 .toast-error {
   background: var(--danger);
 }
+
+/* ---- лидеры серии ---- */
+.leaders {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.leader {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.leader-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.leader-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.leader-main {
+  flex: 1;
+  min-width: 0;
+}
+.leader-name {
+  font-weight: 700;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.leader-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}

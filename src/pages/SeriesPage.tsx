@@ -8,9 +8,12 @@ import { useQuery } from '../lib/hooks'
 import { q, supabase } from '../lib/supabase'
 import { confirmAction } from '../lib/telegram'
 import { toastError } from '../lib/toast'
-import type { Player, PlayerTournamentStats, Series, Tournament, TournamentTeam } from '../lib/types'
+import type { Match, Player, PlayerTournamentStats, Series, Tournament, TournamentTeam } from '../lib/types'
+import { PointsLeaderboard, ScorersLeaderboard } from '../components/SeriesLeaderboards'
+import { finalPlaces, seriesPoints, type SeriesPointsRow } from '../lib/seriesPoints'
 
 type MiniPlayer = Pick<Player, 'id' | 'first_name' | 'last_name' | 'photo_url'>
+type Tab = 'points' | 'scorers' | 'players' | 'tournaments'
 type TRow = Tournament & { winner: Pick<TournamentTeam, 'name' | 'color'> | null }
 
 /** Сумма статистики игрока по всем турнирам серии. */
@@ -45,7 +48,7 @@ export default function SeriesPage() {
   const { id } = useParams()
   const nav = useNavigate()
   const { userId } = useAuth()
-  const [tab, setTab] = useState<'players' | 'tournaments'>('players')
+  const [tab, setTab] = useState<Tab>('points')
   const [picking, setPicking] = useState(false)
   const [renaming, setRenaming] = useState(false)
 
@@ -55,24 +58,28 @@ export default function SeriesPage() {
       q(supabase.from('series_tournaments').select('tournament_id').eq('series_id', id!)),
     ])
     const ids = (links as { tournament_id: string }[]).map((l) => l.tournament_id)
-    if (ids.length === 0) return { series: series as Series, tournaments: [] as TRow[], stats: [] as StatsRow[], players: new Map<string, MiniPlayer>(), matches: 0 }
+    if (ids.length === 0)
+      return { series: series as Series, tournaments: [] as TRow[], stats: [] as StatsRow[], points: [] as SeriesPointsRow[], players: new Map<string, MiniPlayer>(), matches: 0 }
 
-    const [tournaments, stats, matches] = await Promise.all([
+    const [tournaments, stats, matches, teams] = await Promise.all([
       q(supabase.from('tournaments').select('*, winner:tournament_teams!tournaments_winner_team_id_fkey(name, color)').in('id', ids).order('created_at')),
       q(supabase.from('player_tournament_stats').select('*').in('tournament_id', ids)),
-      q(supabase.from('matches').select('id', { count: 'exact', head: false }).in('tournament_id', ids).eq('status', 'finished')),
+      q(supabase.from('matches').select('*').in('tournament_id', ids)),
+      q(supabase.from('tournament_teams').select('*').in('tournament_id', ids)),
     ])
     const rows = stats as PlayerTournamentStats[]
     const playerIds = [...new Set(rows.map((r) => r.player_id))]
     const players = playerIds.length
       ? ((await q(supabase.from('players').select('id, first_name, last_name, photo_url').in('id', playerIds))) as MiniPlayer[])
       : []
+    const places = finalPlaces(tournaments as TRow[], teams as TournamentTeam[], matches as Match[])
     return {
       series: series as Series,
       tournaments: tournaments as TRow[],
       stats: aggregate(rows),
+      points: seriesPoints(rows, places),
       players: new Map(players.map((p) => [p.id, p])),
-      matches: (matches as unknown[]).length,
+      matches: (matches as Match[]).filter((m) => m.status === 'finished').length,
     }
   }, [id])
 
@@ -127,25 +134,28 @@ export default function SeriesPage() {
       </div>
 
       <div className="tabs">
-        <Segmented<'players' | 'tournaments'>
+        <Segmented<Tab>
           value={tab}
           onChange={setTab}
           options={[
+            { value: 'points', label: 'Очки' },
+            { value: 'scorers', label: 'Голы' },
             { value: 'players', label: 'Игроки' },
             { value: 'tournaments', label: 'Турниры' },
           ]}
         />
       </div>
 
-      {tab === 'players' &&
-        (tournaments.length === 0 ? (
-          <div className="card state">Добавьте турниры во вкладке «Турниры»</div>
-        ) : (
-          <>
-            <PlayersStatsTable stats={data.stats} players={data.players} mode="series" />
-            <p className="muted small">Т — турниров сыграно, 🏆 — выигранных турниров, ⭐ — раз лучший игрок турнира.</p>
-          </>
-        ))}
+      {tab !== 'tournaments' && tournaments.length === 0 && <div className="card state">Добавьте турниры во вкладке «Турниры»</div>}
+      {tab === 'points' && tournaments.length > 0 && <PointsLeaderboard rows={data.points} players={data.players} />}
+      {tab === 'scorers' && tournaments.length > 0 && <ScorersLeaderboard stats={data.stats} players={data.players} />}
+
+      {tab === 'players' && tournaments.length > 0 && (
+        <>
+          <PlayersStatsTable stats={data.stats} players={data.players} mode="series" />
+          <p className="muted small">Т — турниров сыграно, 🏆 — выигранных турниров, ⭐ — раз лучший игрок турнира.</p>
+        </>
+      )}
 
       {tab === 'tournaments' && (
         <Section

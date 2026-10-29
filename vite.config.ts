@@ -5,5 +5,6 @@ export default defineConfig({
   plugins: [react()],
   // для GitHub Pages сайт живёт в подпапке: https://<user>.github.io/<repo>/
   base: process.env.BASE_PATH ?? '/',
-  server: { port: 5173 },
+  // usePolling: на этой машине Vite иногда пропускает изменения файлов и показывает устаревший код
+  server: { port: 5173, watch: { usePolling: true, interval: 300 } },
 })
