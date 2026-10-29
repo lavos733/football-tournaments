@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { errText } from './supabase'
 
-/** Загрузка данных с повторным запросом через reload(). */
+/**
+ * Загрузка данных с повторным запросом через reload().
+ * Пока грузятся данные для новых deps, старые не отдаются: иначе компонент на мгновение
+ * получит данные другой формы (например, турниры вместо серий) и упадёт.
+ */
 export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]) {
-  const [data, setData] = useState<T | undefined>()
-  const [error, setError] = useState<string | null>(null)
+  const key = JSON.stringify(deps)
+  const [result, setResult] = useState<{ key: string; data: T } | undefined>()
+  const [error, setError] = useState<{ key: string; text: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [tick, setTick] = useState(0)
 
@@ -14,17 +19,24 @@ export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]) {
     fn()
       .then((d) => {
         if (!alive) return
-        setData(d)
+        setResult({ key, data: d })
         setError(null)
       })
-      .catch((e) => alive && setError(errText(e)))
+      .catch((e) => alive && setError({ key, text: errText(e) }))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick])
+  }, [key, tick])
 
   const reload = useCallback(() => setTick((t) => t + 1), [])
-  return { data, error, loading, reload }
+  const fresh = result?.key === key
+  return {
+    // при reload() с теми же deps старые данные остаются на экране, пока не придут новые
+    data: fresh ? result.data : undefined,
+    error: error?.key === key ? error.text : null,
+    loading: loading || (!fresh && error?.key !== key),
+    reload,
+  }
 }
