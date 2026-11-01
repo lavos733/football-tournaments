@@ -122,6 +122,7 @@ export function PlayersStatsTable({
   }, [stats, sort])
 
   const hi = (...keys: SortKey[]) => (keys.includes(sort) ? 'pts' : '')
+  const showGa = sort === 'ga'
 
   return (
     <>
@@ -148,6 +149,7 @@ export function PlayersStatsTable({
                   <>
                     <th>Г</th>
                     <th>П</th>
+                    {showGa && <th>Г+П</th>}
                     <th>🏆</th>
                     <th>⭐</th>
                   </>
@@ -155,6 +157,7 @@ export function PlayersStatsTable({
                   <>
                     <th>Г</th>
                     <th>П</th>
+                    {showGa && <th>Г+П</th>}
                     <th>🟨</th>
                     <th>🟥</th>
                   </>
@@ -191,15 +194,17 @@ export function PlayersStatsTable({
                       </>
                     ) : isSeries ? (
                       <>
-                        <td className={hi('goals', 'ga')}>{s.goals}</td>
-                        <td className={hi('assists', 'ga')}>{s.assists}</td>
+                        <td className={hi('goals')}>{s.goals}</td>
+                        <td className={hi('assists')}>{s.assists}</td>
+                        {showGa && <td className="pts">{s.goals + s.assists}</td>}
                         <td className={hi('titles')}>{s.titles}</td>
                         <td className={hi('mvp')}>{s.mvp}</td>
                       </>
                     ) : (
                       <>
-                        <td className={hi('goals', 'ga')}>{s.goals}</td>
-                        <td className={hi('assists', 'ga')}>{s.assists}</td>
+                        <td className={hi('goals')}>{s.goals}</td>
+                        <td className={hi('assists')}>{s.assists}</td>
+                        {showGa && <td className="pts">{s.goals + s.assists}</td>}
                         <td>{s.yellow_cards}</td>
                         <td>{s.red_cards}</td>
                       </>

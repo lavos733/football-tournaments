@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { JudgesSection, type JudgeRow } from '../components/JudgesSection'
 import { TeamForm } from '../components/TeamForm'
 import { TournamentForm } from '../components/TournamentForm'
+import { TopLeaders } from '../components/SeriesLeaderboards'
 import { PlayersStatsTable, StandingsTable } from '../components/TournamentStats'
 import { ErrorBox, Loading, Page, Section, Segmented, Sheet, TeamBadge } from '../components/ui'
 import { useAuth } from '../lib/auth'
@@ -223,7 +224,12 @@ export default function TournamentPage() {
       {currentTab === 'table' &&
         (teams.length === 0 ? <div className="card state">Команд пока нет</div> : <StandingsTable teams={teams} matches={matches} />)}
 
-      {currentTab === 'players' && <PlayersStatsTable stats={data.stats} players={data.players} teams={teamById} />}
+      {currentTab === 'players' && (
+        <>
+          <TopLeaders stats={data.stats} players={data.players} />
+          <PlayersStatsTable stats={data.stats} players={data.players} teams={teamById} />
+        </>
+      )}
 
       {currentTab === 'teams' && (
         <>

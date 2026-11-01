@@ -85,8 +85,8 @@ export default function SeriesPage() {
 
   const totalGoals = useMemo(() => (data?.stats ?? []).reduce((n, s) => n + s.goals + s.own_goals, 0), [data])
 
-  if (loading && !data) return <Page title="Серия" back="/tournaments?view=series"><Loading /></Page>
-  if (error || !data) return <Page title="Серия" back="/tournaments?view=series"><ErrorBox text={error ?? 'Не найдено'} onRetry={reload} /></Page>
+  if (loading && !data) return <Page title="Общий зачёт" back="/tournaments?view=series"><Loading /></Page>
+  if (error || !data) return <Page title="Общий зачёт" back="/tournaments?view=series"><ErrorBox text={error ?? 'Не найдено'} onRetry={reload} /></Page>
 
   const { series, tournaments } = data
   const isOwner = series.created_by === userId
@@ -101,7 +101,7 @@ export default function SeriesPage() {
   }
 
   async function removeSeries() {
-    if (!(await confirmAction(`Удалить серию «${series.name}»? Сами турниры останутся.`))) return
+    if (!(await confirmAction(`Удалить общий зачёт «${series.name}»? Сами турниры останутся.`))) return
     try {
       await q(supabase.from('series').delete().eq('id', series.id))
       nav('/tournaments?view=series')
@@ -124,13 +124,13 @@ export default function SeriesPage() {
     >
       <div className="t-head card">
         <div className="t-head-row">
-          <span className="status">Серия</span>
+          <span className="status">Общий зачёт</span>
           <span className="muted">
             {tournaments.length} {plural(tournaments.length, 'турнир', 'турнира', 'турниров')} · {data.matches}{' '}
             {plural(data.matches, 'матч', 'матча', 'матчей')} · {totalGoals} {plural(totalGoals, 'гол', 'гола', 'голов')}
           </span>
         </div>
-        <div className="muted small">Общая статистика игроков по всем турнирам серии, за какую бы команду они ни играли.</div>
+        <div className="muted small">Общая статистика игроков по всем турнирам зачёта, за какую бы команду они ни играли.</div>
       </div>
 
       <div className="tabs">
@@ -169,7 +169,7 @@ export default function SeriesPage() {
           }
         >
           {tournaments.length === 0 ? (
-            <div className="card state">В серии пока нет турниров</div>
+            <div className="card state">В зачёте пока нет турниров</div>
           ) : (
             <div className="list card">
               {tournaments.map((t) => (
@@ -190,7 +190,7 @@ export default function SeriesPage() {
                     </div>
                   </Link>
                   {isOwner && (
-                    <button className="icon-btn" onClick={() => removeTournament(t)} aria-label="Убрать из серии">
+                    <button className="icon-btn" onClick={() => removeTournament(t)} aria-label="Убрать из зачёта">
                       ✕
                     </button>
                   )}
@@ -203,7 +203,7 @@ export default function SeriesPage() {
 
       {isOwner && (
         <button className="btn btn-danger-ghost btn-block" onClick={removeSeries}>
-          Удалить серию
+          Удалить общий зачёт
         </button>
       )}
 
@@ -278,11 +278,11 @@ function AddTournamentsSheet({
   }
 
   return (
-    <Sheet open={open} title="Добавить турниры в серию" onClose={onClose}>
+    <Sheet open={open} title="Добавить турниры в зачёт" onClose={onClose}>
       {loading ? (
         <Loading />
       ) : list.length === 0 ? (
-        <div className="state">Все турниры уже в серии</div>
+        <div className="state">Все турниры уже в зачёте</div>
       ) : (
         <>
           <div className="list">
@@ -335,13 +335,13 @@ export function SeriesForm({
   }
 
   return (
-    <Sheet open={open} title={initial ? 'Серия' : 'Новая серия'} onClose={onClose}>
+    <Sheet open={open} title={initial ? 'Общий зачёт' : 'Новый общий зачёт'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
         <Field label="Название" hint="Например, «Осень 2026» — сюда можно собрать все недельные турниры сезона">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Осень 2026" required autoFocus />
         </Field>
         <button className="btn btn-primary btn-block" disabled={busy || !name.trim()}>
-          {busy ? 'Сохраняю…' : initial ? 'Сохранить' : 'Создать серию'}
+          {busy ? 'Сохраняю…' : initial ? 'Сохранить' : 'Создать зачёт'}
         </button>
       </form>
     </Sheet>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Avatar, ErrorBox, Loading, Page, Section, Sheet, TeamBadge } from '../components/ui'
+import { Avatar, ErrorBox, Field, Loading, Page, Section, Sheet, TeamBadge } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { POS_SHORT, fullName } from '../lib/format'
 import { useQuery } from '../lib/hooks'
@@ -22,6 +22,7 @@ export default function MatchPage() {
   const { id, matchId } = useParams()
   const { userId } = useAuth()
   const [adding, setAdding] = useState<{ kind: EventKind; teamId: string } | null>(null)
+  const [editing, setEditing] = useState<MatchEvent | null>(null)
   const [busy, setBusy] = useState(false)
 
   const { data, loading, error, reload } = useQuery(async () => {
@@ -57,6 +58,8 @@ export default function MatchPage() {
   const canEdit = t.status === 'active' && (t.created_by === userId || data.judges.includes(userId!))
   // события добавляются и удаляются только в идущем матче; завершённый сначала открывают «Исправить результат»
   const canAddEvents = canEdit && m.status === 'live'
+  // автора и ассиста можно поправить и в завершённом матче — счёт от этого не меняется
+  const canFixEvents = canEdit && m.status !== 'scheduled'
 
   const rosterOf = (teamId: string) =>
     data.roster
@@ -218,6 +221,11 @@ export default function MatchPage() {
                       {ev.assist_player_id && <div className="event-sub">пас: {nameOf(ev.assist_player_id)}</div>}
                     </div>
                     {isGoal && <span className="event-score">{score}</span>}
+                    {canFixEvents && (
+                      <button className="icon-btn" onClick={() => setEditing(ev)} aria-label="Изменить событие">
+                        ✎
+                      </button>
+                    )}
                     {canAddEvents && (
                       <button className="icon-btn" onClick={() => removeEvent(ev)} aria-label="Удалить событие">
                         ✕
@@ -301,7 +309,76 @@ export default function MatchPage() {
           }}
         />
       )}
+      {editing && (
+        <EditEventSheet
+          event={editing}
+          own={editing.team_id === home.id ? homeRoster : awayRoster}
+          opponent={editing.team_id === home.id ? awayRoster : homeRoster}
+          onClose={() => setEditing(null)}
+          onSubmit={async (patch) => {
+            setEditing(null)
+            await run(() => q(supabase.from('match_events').update(patch).eq('id', editing.id)))
+          }}
+        />
+      )}
     </Page>
+  )
+}
+
+/** Правка уже записанного события: автор гола и ассистент, автор автогола, игрок с карточкой. */
+function EditEventSheet({
+  event,
+  own,
+  opponent,
+  onClose,
+  onSubmit,
+}: {
+  event: MatchEvent
+  own: Entry[]
+  opponent: Entry[]
+  onClose(): void
+  onSubmit(patch: Pick<MatchEvent, 'player_id' | 'assist_player_id'>): void
+}) {
+  const [player, setPlayer] = useState(event.player_id ?? '')
+  const [assist, setAssist] = useState(event.assist_player_id ?? '')
+  const isGoal = event.type === 'goal'
+  // автогол забивает игрок соперника, остальное — игрок своей команды
+  const authors = event.type === 'own_goal' ? opponent : own
+  const label = event.type === 'goal' ? 'Автор гола' : event.type === 'own_goal' ? 'Автор автогола' : 'Игрок'
+  const title = event.type === 'goal' ? 'Гол' : event.type === 'own_goal' ? 'Автогол' : event.type === 'yellow' ? 'Жёлтая карточка' : 'Красная карточка'
+  const option = (r: Entry) => (
+    <option key={r.player_id} value={r.player_id}>
+      {r.number != null ? `${r.number}. ` : ''}
+      {fullName(r.player)}
+    </option>
+  )
+
+  return (
+    <Sheet open title={`Изменить · ${title}`} onClose={onClose}>
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          onSubmit({ player_id: player || null, assist_player_id: isGoal && assist && assist !== player ? assist : null })
+        }}
+      >
+        <Field label={label}>
+          <select value={player} onChange={(e) => setPlayer(e.target.value)} required={!isGoal}>
+            {isGoal ? <option value="">Автор неизвестен</option> : !player && <option value="">— выберите —</option>}
+            {authors.map(option)}
+          </select>
+        </Field>
+        {isGoal && (
+          <Field label="Пас">
+            <select value={assist === player ? '' : assist} onChange={(e) => setAssist(e.target.value)}>
+              <option value="">Без ассиста</option>
+              {own.filter((r) => r.player_id !== player).map(option)}
+            </select>
+          </Field>
+        )}
+        <button className="btn btn-primary btn-block">Сохранить</button>
+      </form>
+    </Sheet>
   )
 }
 

@@ -34,7 +34,7 @@ export function PointsLeaderboard({ rows, players }: { rows: SeriesPointsRow[]; 
       : list.sort((a, b) => avg(b.points, b.tournaments) - avg(a.points, a.tournaments) || b.tournaments - a.tournaments || b.points - a.points)
   }, [rows, sort])
 
-  if (sorted.length === 0) return <div className="card state">Очки появятся, когда в серии будет хотя бы один завершённый турнир</div>
+  if (sorted.length === 0) return <div className="card state">Очки появятся, когда в зачёте будет хотя бы один завершённый турнир</div>
 
   return (
     <>
@@ -126,6 +126,16 @@ function LeaderCard({ icon, title, list, metric, players }: { icon: string; titl
   )
 }
 
+/** Карточки лучшего бомбардира и лучшего ассистента — для серии и для отдельного турнира. */
+export function TopLeaders({ stats, players }: { stats: StatsRow[]; players: Players }) {
+  return (
+    <div className="leaders">
+      <LeaderCard icon="⚽" title="Лучший бомбардир" list={leaders(stats, 'goals')} metric="goals" players={players} />
+      <LeaderCard icon="🅰️" title="Лучший ассистент" list={leaders(stats, 'assists')} metric="assists" players={players} />
+    </div>
+  )
+}
+
 /** Бомбардиры и ассистенты серии: всего и в среднем за сыгранный матч. */
 export function ScorersLeaderboard({ stats, players }: { stats: StatsRow[]; players: Players }) {
   const [metric, setMetric] = useState<Metric>('goals')
@@ -143,10 +153,7 @@ export function ScorersLeaderboard({ stats, players }: { stats: StatsRow[]; play
 
   return (
     <>
-      <div className="leaders">
-        <LeaderCard icon="⚽" title="Лучший бомбардир" list={leaders(stats, 'goals')} metric="goals" players={players} />
-        <LeaderCard icon="🅰️" title="Лучший ассистент" list={leaders(stats, 'assists')} metric="assists" players={players} />
-      </div>
+      <TopLeaders stats={stats} players={players} />
 
       <div className="toolbar">
         <Segmented<Metric>
@@ -202,7 +209,7 @@ export function ScorersLeaderboard({ stats, players }: { stats: StatsRow[]; play
           </table>
         </div>
       )}
-      <p className="muted small">«За матч» — среднее за сыгранные матчи серии (И). При равенстве выше тот, кто сыграл меньше матчей.</p>
+      <p className="muted small">«За матч» — среднее за сыгранные матчи зачёта (И). При равенстве выше тот, кто сыграл меньше матчей.</p>
     </>
   )
 }

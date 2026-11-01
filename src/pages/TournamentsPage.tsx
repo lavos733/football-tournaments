@@ -54,7 +54,7 @@ export default function TournamentsPage() {
       actions={
         view === 'series' ? (
           <button className="btn btn-primary btn-sm" onClick={() => setCreatingSeries(true)}>
-            + Серия
+            + Зачёт
           </button>
         ) : (
           <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>
@@ -70,7 +70,7 @@ export default function TournamentsPage() {
           options={[
             { value: 'all', label: 'Все' },
             { value: 'mine', label: 'Мои' },
-            { value: 'series', label: 'Серии' },
+            { value: 'series', label: 'Общий зачёт' },
           ]}
         />
       </div>
@@ -157,10 +157,10 @@ function TournamentList({ rows, mine, onCreate }: { rows: Row[]; mine: boolean; 
 function SeriesList({ rows, onCreate }: { rows: SeriesRow[]; onCreate(): void }) {
   if (rows.length === 0)
     return (
-      <Empty title="Серий пока нет">
-        <p className="muted">Серия объединяет несколько турниров — например, все недельные турниры сезона — и показывает общую статистику игроков.</p>
+      <Empty title="Общих зачётов пока нет">
+        <p className="muted">Общий зачёт объединяет несколько турниров — например, все недельные турниры сезона — и показывает общую статистику игроков.</p>
         <button className="btn btn-primary" onClick={onCreate}>
-          Создать серию
+          Создать зачёт
         </button>
       </Empty>
     )
