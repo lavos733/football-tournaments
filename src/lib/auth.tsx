@@ -24,7 +24,11 @@ export const browserLoginAllowed = ['localhost', '127.0.0.1'].includes(window.lo
 
 /** initData → Edge Function telegram-auth → одноразовый токен → сессия Supabase. */
 async function telegramSignIn(): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('telegram-auth', { body: { initData: tg!.initData } })
+  const { data, error } = await withTimeout(
+    supabase.functions.invoke('telegram-auth', { body: { initData: tg!.initData } }),
+    15000,
+    'проверка Telegram',
+  )
   if (error) {
     if (error instanceof FunctionsHttpError) {
       const body = await error.context.json().catch(() => null)
@@ -32,7 +36,11 @@ async function telegramSignIn(): Promise<string> {
     }
     throw error
   }
-  const { data: session, error: otpError } = await supabase.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' })
+  const { data: session, error: otpError } = await withTimeout(
+    supabase.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' }),
+    15000,
+    'создание сессии',
+  )
   if (otpError) throw otpError
   return session.user!.id
 }
@@ -76,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const tgId = tg?.initDataUnsafe?.user?.id
           if (!id || session?.user.user_metadata?.telegram_id !== tgId) {
             if (id) await withTimeout(supabase.auth.signOut({ scope: 'local' }), 5000, 'выход').catch(clearStoredSession)
-            id = await withTimeout(telegramSignIn(), 20000, 'вход через Telegram')
+            id = await telegramSignIn()
           }
         }
 
