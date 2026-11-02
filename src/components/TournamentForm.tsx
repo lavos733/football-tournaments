@@ -3,7 +3,7 @@ import { ROSTER_LIMITS } from '../lib/format'
 import type { Format, Tournament } from '../lib/types'
 import { Field, Segmented, Sheet } from './ui'
 
-export type TournamentValues = { name: string; format: Format; rounds: number }
+export type TournamentValues = { name: string; format: Format; rounds: number; match_minutes: number }
 
 export function TournamentForm({
   open,
@@ -19,6 +19,7 @@ export function TournamentForm({
   const [name, setName] = useState('')
   const [format, setFormat] = useState<Format>(5)
   const [rounds, setRounds] = useState(1)
+  const [minutes, setMinutes] = useState(10)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export function TournamentForm({
     setName(tournament?.name ?? '')
     setFormat(tournament?.format ?? 5)
     setRounds(tournament?.rounds ?? 1)
+    setMinutes(tournament?.match_minutes ?? 10)
   }, [open, tournament])
 
   async function submit(e: FormEvent) {
@@ -33,7 +35,7 @@ export function TournamentForm({
     if (!name.trim()) return
     setBusy(true)
     try {
-      await onSubmit({ name: name.trim(), format, rounds })
+      await onSubmit({ name: name.trim(), format, rounds, match_minutes: minutes })
     } finally {
       setBusy(false)
     }
@@ -63,6 +65,15 @@ export function TournamentForm({
             onChange={setRounds}
             options={[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: n, label: String(n) }))}
           />
+        </Field>
+        <Field label="Длительность матча" hint="Таймер в матче идёт от этого времени до 0:00">
+          <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+            {Array.from({ length: 16 }, (_, i) => i + 5).map((n) => (
+              <option key={n} value={n}>
+                {n} мин
+              </option>
+            ))}
+          </select>
         </Field>
         <button className="btn btn-primary btn-block" disabled={busy || !name.trim()}>
           {busy ? 'Сохраняю…' : tournament ? 'Сохранить' : 'Создать турнир'}

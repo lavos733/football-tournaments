@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Avatar, ErrorBox, Field, Loading, Page, Section, Sheet, TeamBadge } from '../components/ui'
 import { useAuth } from '../lib/auth'
@@ -26,7 +26,8 @@ export default function MatchPage() {
   const [busy, setBusy] = useState(false)
 
   const { data, loading, error, reload } = useQuery(async () => {
-    const [m, t, judges, teams, roster, events, gks, absences] = await Promise.all([
+    const sent = Date.now()
+    const [m, t, judges, teams, roster, events, gks, absences, serverNow] = await Promise.all([
       q(supabase.from('matches').select('*').eq('id', matchId!).single()),
       q(supabase.from('tournaments').select('*').eq('id', id!).single()),
       q(supabase.from('tournament_judges').select('profile_id').eq('tournament_id', id!)),
@@ -35,7 +36,10 @@ export default function MatchPage() {
       q(supabase.from('match_events').select('*').eq('match_id', matchId!).order('created_at')),
       q(supabase.from('match_goalkeepers').select('*').eq('match_id', matchId!)),
       q(supabase.from('match_absences').select('player_id').eq('match_id', matchId!)),
+      q(supabase.rpc('server_now')).catch(() => null),
     ])
+    // насколько часы телефона расходятся с сервером
+    const clockSkew = serverNow ? new Date(serverNow as string).getTime() - (sent + Date.now()) / 2 : 0
     return {
       m: m as Match,
       t: t as Tournament,
@@ -45,6 +49,7 @@ export default function MatchPage() {
       events: events as MatchEvent[],
       gks: gks as MatchGoalkeeper[],
       absent: new Set((absences as { player_id: string }[]).map((a) => a.player_id)),
+      clockSkew,
     }
   }, [id, matchId])
 
@@ -103,6 +108,9 @@ export default function MatchPage() {
       }
     })
 
+  const timer = (action: 'pause' | 'resume' | 'adjust', delta = 0) =>
+    run(() => q(supabase.rpc('match_timer', { p_match: m.id, p_action: action, p_delta: delta })))
+
   const removeEvent = (ev: MatchEvent) =>
     run(async () => {
       if (!(await confirmAction('Удалить событие?'))) return
@@ -152,6 +160,17 @@ export default function MatchPage() {
           <span>{away.name}</span>
         </div>
       </div>
+
+      {m.status !== 'scheduled' && m.timer_left != null && (
+        <MatchTimer
+          left={m.timer_left}
+          since={m.timer_since}
+          clockSkew={data.clockSkew}
+          controls={canEdit && m.status === 'live'}
+          busy={busy}
+          onAction={timer}
+        />
+      )}
 
       {canEdit && (
         <div className="match-actions">
@@ -322,6 +341,72 @@ export default function MatchPage() {
         />
       )}
     </Page>
+  )
+}
+
+function formatClock(sec: number) {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+}
+
+/** Обратный отсчёт матча. Состояние на сервере, здесь только считаем остаток по часам. */
+function MatchTimer({
+  left,
+  since,
+  clockSkew,
+  controls,
+  busy,
+  onAction,
+}: {
+  left: number
+  since: string | null
+  clockSkew: number
+  controls: boolean
+  busy: boolean
+  onAction(action: 'pause' | 'resume' | 'adjust', delta?: number): void
+}) {
+  const running = since != null
+  const calc = () => (running ? Math.max(0, left - Math.floor((Date.now() + clockSkew - new Date(since).getTime()) / 1000)) : left)
+  const [now, setNow] = useState(calc)
+  const prev = useRef(now)
+
+  useEffect(() => {
+    setNow(calc())
+    if (!running) return
+    const t = setInterval(() => setNow(calc()), 250)
+    return () => clearInterval(t)
+  }, [left, since, clockSkew])
+
+  // время вышло — вибрация один раз
+  useEffect(() => {
+    if (prev.current > 0 && now === 0 && running) haptic('warning')
+    prev.current = now
+  }, [now])
+
+  const over = now === 0
+  return (
+    <div className={`card match-timer ${over ? 'match-timer-over' : ''}`}>
+      <div className="mt-clock">{formatClock(now)}</div>
+      <div className="mt-state">{over ? 'Время вышло' : running ? 'Идёт' : 'Пауза'}</div>
+      {controls && (
+        <div className="mt-controls">
+          <button className="btn btn-secondary btn-sm" disabled={busy || now === 0} onClick={() => onAction('adjust', -10)}>
+            −10 с
+          </button>
+          {running ? (
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => onAction('pause')}>
+              ❚❚ Пауза
+            </button>
+          ) : (
+            <button className="btn btn-primary btn-sm" disabled={busy || now === 0} onClick={() => onAction('resume')}>
+              ▶ Продолжить
+            </button>
+          )}
+          <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => onAction('adjust', 10)}>
+            +10 с
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

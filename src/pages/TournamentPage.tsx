@@ -167,7 +167,7 @@ export default function TournamentPage() {
         <div className="t-head-row">
           <span className={`status status-${t.status}`}>{STATUS_LABEL[t.status]}</span>
           <span className="muted">
-            {t.format}×{t.format} · {t.rounds} {plural(t.rounds, 'круг', 'круга', 'кругов')} · {teams.length}{' '}
+            {t.format}×{t.format} · {t.rounds} {plural(t.rounds, 'круг', 'круга', 'кругов')} · {t.match_minutes} мин · {teams.length}{' '}
             {plural(teams.length, 'команда', 'команды', 'команд')}
           </span>
         </div>

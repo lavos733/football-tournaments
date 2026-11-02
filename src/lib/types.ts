@@ -43,6 +43,8 @@ export interface Tournament {
   name: string
   format: Format
   rounds: number
+  /** длительность матча, минут */
+  match_minutes: number
   status: TournamentStatus
   mvp_player_id: string | null
   winner_team_id: string | null
@@ -86,6 +88,10 @@ export interface Match {
   home_score: number | null
   away_score: number | null
   status: MatchStatus
+  /** секунд оставалось в момент timer_since */
+  timer_left: number | null
+  /** когда таймер запущен; null — на паузе */
+  timer_since: string | null
 }
 
 export type MatchStatus = 'scheduled' | 'live' | 'finished'
