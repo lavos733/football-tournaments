@@ -24,8 +24,10 @@ export function TeamForm({
 
   useEffect(() => {
     if (!open) return
-    setName(initial?.name ?? '')
-    setColor(initial?.color ?? TEAM_COLORS[Math.floor(Math.random() * TEAM_COLORS.length)]!)
+    const c = initial?.color ?? TEAM_COLORS[Math.floor(Math.random() * TEAM_COLORS.length)]!
+    // новой команде сразу даём название по случайному цвету
+    setName(initial?.name ?? TEAM_COLOR_NAMES[c] ?? '')
+    setColor(c)
   }, [open, initial])
 
   // пустое название или название по прошлому цвету меняем на название нового цвета
