@@ -28,6 +28,19 @@ export const ROSTER_LIMITS: Record<Format, [number, number]> = {
 
 export const TEAM_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fdd835', '#8e24aa', '#fb8c00', '#00acc1', '#212121', '#f5f5f5']
 
+/** Название команды по цвету формы — подставляется, пока название не введено руками */
+export const TEAM_COLOR_NAMES: Record<string, string> = {
+  '#e53935': 'Красные',
+  '#1e88e5': 'Синие',
+  '#43a047': 'Зелёные',
+  '#fdd835': 'Жёлтые',
+  '#8e24aa': 'Фиолетовые',
+  '#fb8c00': 'Оранжевые',
+  '#00acc1': 'Бирюзовые',
+  '#212121': 'Чёрные',
+  '#f5f5f5': 'Белые',
+}
+
 export function fullName(p: Pick<Player, 'first_name' | 'last_name'>): string {
   return [p.first_name, p.last_name].filter(Boolean).join(' ')
 }

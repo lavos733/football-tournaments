@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { TEAM_COLORS } from '../lib/format'
+import { TEAM_COLORS, TEAM_COLOR_NAMES } from '../lib/format'
 import { ColorPicker, Field, Sheet } from './ui'
 
 /** Название + цвет. Используется и для команд базы, и для команд турнира. */
@@ -28,6 +28,13 @@ export function TeamForm({
     setColor(initial?.color ?? TEAM_COLORS[Math.floor(Math.random() * TEAM_COLORS.length)]!)
   }, [open, initial])
 
+  // пустое название или название по прошлому цвету меняем на название нового цвета
+  function pickColor(c: string) {
+    setColor(c)
+    const auto = Object.values(TEAM_COLOR_NAMES)
+    if (!name.trim() || auto.includes(name.trim())) setName(TEAM_COLOR_NAMES[c] ?? name)
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
@@ -46,7 +53,7 @@ export function TeamForm({
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, «Красные»" required autoFocus />
         </Field>
         <Field label="Цвет формы">
-          <ColorPicker value={color} onChange={setColor} />
+          <ColorPicker value={color} onChange={pickColor} />
         </Field>
         <button className="btn btn-primary btn-block" disabled={busy || !name.trim()}>
           {busy ? 'Сохраняю…' : submitLabel}
