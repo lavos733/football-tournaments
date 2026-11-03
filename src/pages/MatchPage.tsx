@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import { POS_SHORT, fullName } from '../lib/format'
 import { useQuery } from '../lib/hooks'
 import { q, supabase } from '../lib/supabase'
+import { beepFinal } from '../lib/sound'
 import { confirmAction, guardClosing, haptic } from '../lib/telegram'
 import { toastError } from '../lib/toast'
 import type { Match, MatchEvent, MatchGoalkeeper, MatchStatus, Player, RosterEntry, Tournament, TournamentTeam } from '../lib/types'
@@ -392,9 +393,12 @@ function MatchTimer({
     return () => clearInterval(t)
   }, [left, since, clockSkew])
 
-  // время вышло — вибрация один раз
+  // время вышло — один раз вибрация, а у судьи ещё и звук: телефон может лежать на скамейке
   useEffect(() => {
-    if (prev.current > 0 && now === 0 && running) haptic('warning')
+    if (prev.current > 0 && now === 0 && running) {
+      haptic('warning')
+      if (controls) beepFinal()
+    }
     prev.current = now
   }, [now])
 
