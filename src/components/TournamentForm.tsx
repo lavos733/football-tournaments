@@ -28,7 +28,9 @@ export function TournamentForm({
     setFormat(tournament?.format ?? 5)
     setRounds(tournament?.rounds ?? 1)
     setMinutes(tournament?.match_minutes ?? 10)
-  }, [open, tournament])
+    // только при открытии: фоновое обновление данных не должно сбрасывать ввод
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   async function submit(e: FormEvent) {
     e.preventDefault()

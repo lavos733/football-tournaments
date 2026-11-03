@@ -14,6 +14,10 @@ interface TgWebApp {
   ready(): void
   expand(): void
   showConfirm?(message: string, cb: (ok: boolean) => void): void
+  enableClosingConfirmation?(): void
+  disableClosingConfirmation?(): void
+  disableVerticalSwipes?(): void
+  enableVerticalSwipes?(): void
   BackButton: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void }
   HapticFeedback?: { notificationOccurred(type: 'success' | 'error' | 'warning'): void }
 }
@@ -40,6 +44,17 @@ export function tgUserName(): string {
 export function confirmAction(message: string): Promise<boolean> {
   if (inTelegram && tg?.showConfirm) return new Promise((resolve) => tg!.showConfirm!(message, resolve))
   return Promise.resolve(window.confirm(message))
+}
+
+/** На время ведения матча: закрытие — только с подтверждением, свайп вниз не сворачивает приложение. Возвращает отмену. */
+export function guardClosing(): () => void {
+  if (!inTelegram || !tg) return () => {}
+  tg.enableClosingConfirmation?.()
+  tg.disableVerticalSwipes?.()
+  return () => {
+    tg!.disableClosingConfirmation?.()
+    tg!.enableVerticalSwipes?.()
+  }
 }
 
 export function haptic(type: 'success' | 'error' | 'warning') {

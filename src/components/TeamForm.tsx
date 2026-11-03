@@ -28,7 +28,9 @@ export function TeamForm({
     // новой команде сразу даём название по случайному цвету
     setName(initial?.name ?? TEAM_COLOR_NAMES[c] ?? '')
     setColor(c)
-  }, [open, initial])
+    // только при открытии: фоновое обновление данных не должно сбрасывать ввод
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // пустое название или название по прошлому цвету меняем на название нового цвета
   function pickColor(c: string) {

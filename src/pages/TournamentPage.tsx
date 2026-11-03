@@ -51,7 +51,8 @@ export default function TournamentPage() {
       stats: stats as PlayerTournamentStats[],
       players: new Map((roster as { player: MiniPlayer }[]).map((r) => [r.player.id, r.player])),
     }
-  }, [id])
+    // идущий турнир обновляется сам: зрители видят свежие счета и таблицу
+  }, [id], { refreshMs: (d) => (d.t.status === 'active' ? 10_000 : undefined) })
 
   const teamById = useMemo(() => new Map<string, TournamentTeam>((data?.teams ?? []).map((t) => [t.id, t])), [data])
 

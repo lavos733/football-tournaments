@@ -35,7 +35,9 @@ export function PlayerForm({
     setBirthDate(player?.birth_date ?? '')
     setPhoto(player?.photo_url ?? null)
     setSimilar([])
-  }, [open, player])
+    // только при открытии: фоновое обновление данных не должно сбрасывать ввод
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // поиск похожих игроков (только при создании)
   useEffect(() => {

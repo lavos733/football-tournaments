@@ -70,7 +70,9 @@ export function FinishTournamentSheet({
     if (initialMvp) return setMvp(initialMvp)
     const best = [...stats].sort((a, b) => b.goals + b.assists - (a.goals + a.assists) || b.goals - a.goals)[0]
     setMvp(best && best.goals + best.assists > 0 ? best.player_id : '')
-  }, [open, initialMvp, stats])
+    // только при открытии: фоновое обновление данных не должно сбрасывать выбор
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   return (
     <Sheet open={open} title="Завершить турнир" onClose={onClose}>

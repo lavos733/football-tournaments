@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { Avatar, ErrorBox, Field, Loading, Page, Section, Sheet, TeamBadge } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { POS_SHORT, fullName } from '../lib/format'
 import { useQuery } from '../lib/hooks'
 import { q, supabase } from '../lib/supabase'
-import { confirmAction, haptic } from '../lib/telegram'
+import { confirmAction, guardClosing, haptic } from '../lib/telegram'
 import { toastError } from '../lib/toast'
 import type { Match, MatchEvent, MatchGoalkeeper, MatchStatus, Player, RosterEntry, Tournament, TournamentTeam } from '../lib/types'
 
@@ -27,7 +27,7 @@ export default function MatchPage() {
 
   const { data, loading, error, reload } = useQuery(async () => {
     const sent = Date.now()
-    const [m, t, judges, teams, roster, events, gks, absences, serverNow] = await Promise.all([
+    const [m, t, judges, teams, roster, events, gks, absences, schedule, serverNow] = await Promise.all([
       q(supabase.from('matches').select('*').eq('id', matchId!).single()),
       q(supabase.from('tournaments').select('*').eq('id', id!).single()),
       q(supabase.from('tournament_judges').select('profile_id').eq('tournament_id', id!)),
@@ -36,6 +36,7 @@ export default function MatchPage() {
       q(supabase.from('match_events').select('*').eq('match_id', matchId!).order('created_at')),
       q(supabase.from('match_goalkeepers').select('*').eq('match_id', matchId!)),
       q(supabase.from('match_absences').select('player_id').eq('match_id', matchId!)),
+      q(supabase.from('matches').select('id, status').eq('tournament_id', id!).order('matchday').order('position')),
       q(supabase.rpc('server_now')).catch(() => null),
     ])
     // насколько часы телефона расходятся с сервером
@@ -49,9 +50,16 @@ export default function MatchPage() {
       events: events as MatchEvent[],
       gks: gks as MatchGoalkeeper[],
       absent: new Set((absences as { player_id: string }[]).map((a) => a.player_id)),
+      schedule: schedule as Pick<Match, 'id' | 'status'>[],
       clockSkew,
     }
-  }, [id, matchId])
+    // зрители видят счёт и таймер без перезахода: идущий матч — чаще, остальные матчи турнира — реже
+  }, [id, matchId], { refreshMs: (d) => (d.m.status === 'live' ? 5_000 : d.t.status === 'active' ? 15_000 : undefined) })
+
+  // судья ведёт матч: случайный свайп вниз не должен закрыть приложение
+  const judging =
+    data?.m.status === 'live' && data.t.status === 'active' && (data.t.created_by === userId || data.judges.includes(userId!))
+  useEffect(() => (judging ? guardClosing() : undefined), [judging])
 
   const back = `/tournaments/${id}`
   if (loading && !data) return <Page title="Матч" back={back}><Loading /></Page>
@@ -143,6 +151,8 @@ export default function MatchPage() {
   })
 
   const played_ = m.status !== 'scheduled'
+  // следующий по расписанию несыгранный матч
+  const next = m.status === 'finished' ? data.schedule.find((x) => x.status !== 'finished' && x.id !== m.id) : undefined
 
   return (
     <Page title={`Тур ${m.matchday}`} back={back}>
@@ -195,6 +205,12 @@ export default function MatchPage() {
             </button>
           )}
         </div>
+      )}
+
+      {next && (
+        <Link to={`/tournaments/${id}/matches/${next.id}`} replace className="btn btn-primary btn-block">
+          Следующий матч →
+        </Link>
       )}
 
       {canAddEvents && (
