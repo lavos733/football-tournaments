@@ -7,7 +7,7 @@ import { useQuery } from '../lib/hooks'
 import { q, supabase } from '../lib/supabase'
 import { beepFinal } from '../lib/sound'
 import { confirmAction, guardClosing, haptic } from '../lib/telegram'
-import { toastError } from '../lib/toast'
+import { toast, toastError } from '../lib/toast'
 import type { Match, MatchEvent, MatchGoalkeeper, MatchStatus, Player, RosterEntry, Tournament, TournamentTeam } from '../lib/types'
 
 type Entry = RosterEntry & { player: Player }
@@ -28,7 +28,7 @@ export default function MatchPage() {
 
   const { data, loading, error, reload } = useQuery(async () => {
     const sent = Date.now()
-    const [m, t, judges, teams, roster, events, gks, absences, schedule, serverNow] = await Promise.all([
+    const [m, t, judges, teams, roster, events, gks, absences, schedule, serverNow, tournamentGks] = await Promise.all([
       q(supabase.from('matches').select('*').eq('id', matchId!).single()),
       q(supabase.from('tournaments').select('*').eq('id', id!).single()),
       q(supabase.from('tournament_judges').select('profile_id').eq('tournament_id', id!)),
@@ -39,6 +39,13 @@ export default function MatchPage() {
       q(supabase.from('match_absences').select('player_id').eq('match_id', matchId!)),
       q(supabase.from('matches').select('id, status').eq('tournament_id', id!).order('matchday').order('position')),
       q(supabase.rpc('server_now')).catch(() => null),
+      // вратари всех матчей турнира — чтобы при нескольких вратарях в составе взять того, кто стоял в прошлый раз
+      q(
+        supabase
+          .from('match_goalkeepers')
+          .select('match_id, team_id, player_id, match:matches!inner(tournament_id)')
+          .eq('match.tournament_id', id!),
+      ),
     ])
     // насколько часы телефона расходятся с сервером
     const clockSkew = serverNow ? new Date(serverNow as string).getTime() - (sent + Date.now()) / 2 : 0
@@ -52,6 +59,7 @@ export default function MatchPage() {
       gks: gks as MatchGoalkeeper[],
       absent: new Set((absences as { player_id: string }[]).map((a) => a.player_id)),
       schedule: schedule as Pick<Match, 'id' | 'status'>[],
+      tournamentGks: tournamentGks as unknown as MatchGoalkeeper[],
       clockSkew,
     }
     // зрители видят счёт и таймер без перезахода: идущий матч — чаще, остальные матчи турнира — реже
@@ -89,6 +97,30 @@ export default function MatchPage() {
     return e ? fullName(e.player) : '—'
   }
 
+  /**
+   * Вратарь по умолчанию: игрок с позицией «Вратарь» из сыгравших. Если таких несколько — тот,
+   * кто стоял в воротах в последнем матче команды, иначе первый по номеру. Нет вратаря — null, выбрать вручную.
+   */
+  const suggestedKeeper = (teamId: string, list: Entry[]): string | null => {
+    const keepers = list.filter((r) => r.player.position === 'GK')
+    if (keepers.length <= 1) return keepers[0]?.player_id ?? null
+    const order = new Map(data.schedule.map((x, i) => [x.id, i]))
+    const last = data.tournamentGks
+      .filter((g) => g.team_id === teamId && g.match_id !== m.id && keepers.some((k) => k.player_id === g.player_id))
+      .sort((a, b) => (order.get(b.match_id) ?? -1) - (order.get(a.match_id) ?? -1))[0]
+    return last?.player_id ?? keepers[0]!.player_id
+  }
+  const sides = [
+    { team: home, list: played(homeRoster) },
+    { team: away, list: played(awayRoster) },
+  ].map((x) => {
+    const set = gks.find((g) => g.team_id === x.team.id)?.player_id ?? null
+    // до начала матча вратарь по позиции виден сразу, а сохраняется при старте
+    const suggested = !set && m.status === 'scheduled' ? suggestedKeeper(x.team.id, x.list) : null
+    return { ...x, keeper: set ?? suggested, suggested: Boolean(suggested) }
+  })
+  const missingKeeper = sides.filter((x) => !x.keeper)
+
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
     try {
@@ -102,20 +134,25 @@ export default function MatchPage() {
     }
   }
 
-  const setStatus = (status: MatchStatus) =>
-    run(async () => {
-      await q(supabase.rpc('set_match_status', { p_match: m.id, p_status: status }))
-      // при старте подставляем вратарей: игрок с позицией «Вратарь», если он один в составе
-      if (status === 'live') {
-        for (const [team, roster] of [[home, homeRoster], [away, awayRoster]] as const) {
-          if (gks.some((g) => g.team_id === team.id)) continue
-          const keepers = played(roster).filter((r) => r.player.position === 'GK')
-          if (keepers.length === 1) {
-            await q(supabase.from('match_goalkeepers').upsert({ match_id: m.id, team_id: team.id, player_id: keepers[0]!.player_id }))
+  const setStatus = (status: MatchStatus) => {
+    const starting = status === 'live' && m.status === 'scheduled'
+    // начать матч можно только с вратарями у обеих команд
+    if (starting && missingKeeper.length > 0) {
+      haptic('error')
+      toast(`Выберите вратаря: ${missingKeeper.map((x) => x.team.name).join(', ')}`)
+      return
+    }
+    return run(async () => {
+      if (starting) {
+        for (const x of sides) {
+          if (x.suggested && x.keeper) {
+            await q(supabase.from('match_goalkeepers').upsert({ match_id: m.id, team_id: x.team.id, player_id: x.keeper }))
           }
         }
       }
+      await q(supabase.rpc('set_match_status', { p_match: m.id, p_status: status }))
     })
+  }
 
   const timer = (action: 'pause' | 'resume' | 'adjust', delta = 0) =>
     run(() => q(supabase.rpc('match_timer', { p_match: m.id, p_action: action, p_delta: delta })))
@@ -277,18 +314,14 @@ export default function MatchPage() {
 
       <Section title="Вратари">
         <div className="card gk-grid">
-          {[
-            { team: home, list: played(homeRoster) },
-            { team: away, list: played(awayRoster) },
-          ].map(({ team, list }) => {
-            const gk = gks.find((g) => g.team_id === team.id)
+          {sides.map(({ team, list, keeper, suggested }) => {
             return (
               <label key={team.id} className="field">
                 <span className="field-label">
                   <TeamBadge color={team.color} size={10} /> {team.name}
                 </span>
                 {canEdit ? (
-                  <select value={gk?.player_id ?? ''} onChange={(e) => setGoalkeeper(team.id, e.target.value)} disabled={busy}>
+                  <select value={keeper ?? ''} onChange={(e) => setGoalkeeper(team.id, e.target.value)} disabled={busy}>
                     <option value="">— не указан —</option>
                     {list.map((r) => (
                       <option key={r.player_id} value={r.player_id}>
@@ -297,7 +330,12 @@ export default function MatchPage() {
                     ))}
                   </select>
                 ) : (
-                  <span>{gk ? nameOf(gk.player_id) : '—'}</span>
+                  <span>{keeper ? nameOf(keeper) : '—'}</span>
+                )}
+                {canEdit && m.status === 'scheduled' && (suggested || !keeper) && (
+                  <span className={`field-hint ${keeper ? '' : 'gk-missing'}`}>
+                    {suggested ? 'По позиции «Вратарь»' : 'Нет вратаря в составе — выберите перед началом'}
+                  </span>
                 )}
               </label>
             )

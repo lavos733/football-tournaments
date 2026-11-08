@@ -1328,3 +1328,8 @@ select {
 .delta.flat {
   color: var(--muted);
 }
+
+/* вратарь матча не выбран — без него матч не начать */
+.field-hint.gk-missing {
+  color: var(--danger);
+}
