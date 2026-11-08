@@ -108,6 +108,8 @@ export interface MatchEvent {
   team_id: string
   player_id: string | null
   assist_player_id: string | null
+  /** сколько секунд прошло с начала матча (по таймеру); null — таймера не было или событие старше миграции 012 */
+  match_second?: number | null
   created_at: string
 }
 

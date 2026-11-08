@@ -19,10 +19,15 @@ export const MATCH_STATUS_LABEL: Record<MatchStatus, string> = {
   finished: 'Завершён',
 }
 
+/** Тайм-код события: сколько прошло с начала матча, «м:сс» */
+function eventTime(sec: number) {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+}
+
 export default function MatchPage() {
   const { id, matchId } = useParams()
   const { userId } = useAuth()
-  const [adding, setAdding] = useState<{ kind: EventKind; teamId: string } | null>(null)
+  const [adding, setAdding] = useState<{ kind: EventKind; teamId: string; second: number | null } | null>(null)
   const [editing, setEditing] = useState<MatchEvent | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -120,6 +125,18 @@ export default function MatchPage() {
     return { ...x, keeper: set ?? suggested, suggested: Boolean(suggested) }
   })
   const missingKeeper = sides.filter((x) => !x.keeper)
+
+  /**
+   * Сколько секунд прошло с начала матча прямо сейчас — по тому же таймеру, что на экране.
+   * Фиксируется в момент нажатия «Гол»/карточки, а не после выбора игроков.
+   */
+  const elapsedNow = (): number | null => {
+    if (m.timer_left == null) return null
+    const left = m.timer_since
+      ? Math.max(0, m.timer_left - Math.floor((Date.now() + data.clockSkew - new Date(m.timer_since).getTime()) / 1000))
+      : m.timer_left
+    return Math.max(0, t.match_minutes * 60 - left)
+  }
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -259,13 +276,13 @@ export default function MatchPage() {
                 <TeamBadge color={team.color} /> {team.name}
               </div>
               <div className="event-col-btns">
-                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'goal', teamId: team.id })}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'goal', teamId: team.id, second: elapsedNow() })}>
                   ⚽ Гол
                 </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'yellow', teamId: team.id })}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'yellow', teamId: team.id, second: elapsedNow() })}>
                   🟨
                 </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'red', teamId: team.id })}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'red', teamId: team.id, second: elapsedNow() })}>
                   🟥
                 </button>
               </div>
@@ -285,6 +302,7 @@ export default function MatchPage() {
                 const isGoal = ev.type === 'goal' || ev.type === 'own_goal'
                 return (
                   <div key={ev.id} className={`event ${isHome ? 'event-home' : 'event-away'}`}>
+                    {ev.match_second != null && <span className="event-time">{eventTime(ev.match_second)}</span>}
                     <span className="event-icon">{isGoal ? '⚽' : ev.type === 'yellow' ? '🟨' : '🟥'}</span>
                     <div className="event-main">
                       <div className="event-title">
@@ -379,7 +397,7 @@ export default function MatchPage() {
           onClose={() => setAdding(null)}
           onSubmit={async (ev) => {
             setAdding(null)
-            await run(() => q(supabase.from('match_events').insert({ match_id: m.id, ...ev })))
+            await run(() => q(supabase.from('match_events').insert({ match_id: m.id, match_second: adding.second, ...ev })))
           }}
         />
       )}
