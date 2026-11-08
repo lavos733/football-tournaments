@@ -5,6 +5,7 @@ export const POSITIONS: Record<Position, string> = {
   DEF: 'Защитник',
   MID: 'Полузащитник',
   FWD: 'Нападающий',
+  UNI: 'Универсал',
 }
 
 export const POS_SHORT: Record<Position, string> = {
@@ -12,6 +13,7 @@ export const POS_SHORT: Record<Position, string> = {
   DEF: 'ЗЩ',
   MID: 'ПЗ',
   FWD: 'НАП',
+  UNI: 'УНИ',
 }
 
 export const STATUS_LABEL: Record<TournamentStatus, string> = {

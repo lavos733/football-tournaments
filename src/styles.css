@@ -1194,3 +1194,137 @@ select {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
+
+/* Рейтинг игрока (OVR) */
+.hero {
+  position: relative;
+}
+.ovr-badge,
+.ovr-big {
+  /* рамка, чтобы тёмный бейдж не сливался с карточкой в тёмной теме */
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.ovr-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+  padding: 6px 8px 5px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--header-bg);
+  color: var(--header-text);
+  cursor: pointer;
+  line-height: 1;
+}
+.ovr-badge.provisional {
+  background: var(--muted-bg);
+  color: var(--text);
+}
+.ovr-value {
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ovr-label {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+}
+.ovr-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* шторка рендерится внутри карточки игрока, где текст по центру */
+  text-align: left;
+}
+.ovr-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ovr-big {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--header-bg);
+  color: var(--header-text);
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ovr-big.provisional {
+  background: var(--muted-bg);
+  color: var(--text);
+}
+.ovr-head-title {
+  font-weight: 700;
+}
+.ovr-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--muted-bg);
+  font-size: 13px;
+}
+.ovr-h {
+  margin: 8px 0 0;
+  font-size: 15px;
+}
+.ovr-details p {
+  margin: 0;
+}
+.ovr-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ovr-chart svg {
+  display: block;
+  width: 100%;
+  height: 120px;
+}
+.ovr-chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.ovr-chart-fill {
+  fill: var(--accent);
+  opacity: 0.1;
+}
+.ovr-chart-base {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+.ovr-chart-axis {
+  display: flex;
+  justify-content: space-between;
+}
+.delta {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.delta.up {
+  color: var(--ok);
+}
+.delta.down {
+  color: var(--danger);
+}
+.delta.flat {
+  color: var(--muted);
+}

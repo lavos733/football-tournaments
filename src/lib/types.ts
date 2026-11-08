@@ -1,4 +1,5 @@
-export type Position = 'GK' | 'DEF' | 'MID' | 'FWD'
+/** UNI — универсал: играет и в поле, и в воротах */
+export type Position = 'GK' | 'DEF' | 'MID' | 'FWD' | 'UNI'
 export type TournamentStatus = 'draft' | 'active' | 'finished'
 export type Format = 5 | 8
 

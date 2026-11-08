@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PlayerForm } from '../components/PlayerForm'
+import { RatingBadge } from '../components/RatingBadge'
+import { loadRatings } from '../lib/ratingData'
 import { Avatar, ErrorBox, Loading, Page, Section, TeamBadge } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { POSITIONS, STATUS_LABEL, ageLabel, fullName } from '../lib/format'
@@ -28,7 +30,7 @@ export default function PlayerPage() {
   const [editing, setEditing] = useState(false)
 
   const { data, loading, error, reload } = useQuery(async () => {
-    const [player, history, claims, myLinked, career, perTournament] = await Promise.all([
+    const [player, history, claims, myLinked, career, perTournament, ratings] = await Promise.all([
       q(
         supabase
           .from('players')
@@ -46,8 +48,11 @@ export default function PlayerPage() {
       q(supabase.from('players').select('id').eq('linked_profile_id', userId!).maybeSingle()),
       q(supabase.from('player_stats').select('*').eq('player_id', id!).maybeSingle()),
       q(supabase.from('player_tournament_stats').select('*').eq('player_id', id!)),
+      // рейтинг не обязателен: если не загрузился — карточка показывается без него
+      loadRatings().catch(() => null),
     ])
     return {
+      ratings,
       career: career as PlayerCareerStats | null,
       perTournament: new Map((perTournament as PlayerTournamentStats[]).map((s) => [s.tournament_id, s])),
       player: player as PlayerRow,
@@ -118,6 +123,7 @@ export default function PlayerPage() {
       }
     >
       <div className="hero card">
+        {data.ratings?.ratings.get(p.id) && <RatingBadge rating={data.ratings.ratings.get(p.id)!} position={p.position} data={data.ratings} />}
         <Avatar src={p.photo_url} name={fullName(p)} size={88} />
         <div className="hero-name">
           {fullName(p)} {p.linked_profile_id && <span className="verified">✓</span>}
@@ -161,7 +167,7 @@ export default function PlayerPage() {
         </Section>
       )}
 
-      <CareerStats s={data.career} isKeeper={p.position === 'GK'} />
+      <CareerStats s={data.career} isKeeper={p.position === 'GK' || p.position === 'UNI'} />
 
       <Section title={`Турниры · ${history.length}`}>
         {history.length === 0 ? (
