@@ -128,7 +128,9 @@ function resultWord(c: RatingChange) {
 /** Короткие причины изменения: что дало результат матча и личная игра */
 function reasons(c: RatingChange): string[] {
   const out: string[] = []
-  if (c.role === 'GK') out.push(c.goals_against === 0 ? 'в воротах, сухой матч' : `в воротах, пропущено ${c.goals_against}`)
+  if (c.gk_share >= 0.99) out.push(c.gk_conceded === 0 ? 'в воротах, сухой матч' : `в воротах, пропущено ${c.gk_conceded}`)
+  else if (c.gk_share > 0)
+    out.push(`в воротах ${Math.round(c.gk_share * 100)}% матча, пропущено ${c.gk_conceded}`)
   const diff = c.opp_avg - c.team_avg
   if (diff > 2) out.push('соперник сильнее')
   else if (diff < -2) out.push('соперник слабее')

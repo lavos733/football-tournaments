@@ -113,10 +113,21 @@ export interface MatchEvent {
   created_at: string
 }
 
+/** Вратарь команды с начала матча */
 export interface MatchGoalkeeper {
   match_id: string
   team_id: string
   player_id: string
+}
+
+/** Замена вратаря по ходу матча: player_id встал в ворота на match_second секунде */
+export interface MatchGkChange {
+  id: string
+  match_id: string
+  team_id: string
+  player_id: string
+  match_second: number | null
+  created_at: string
 }
 
 export interface PlayerStats {

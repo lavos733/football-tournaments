@@ -8,7 +8,7 @@ import { q, supabase } from '../lib/supabase'
 import { beepFinal } from '../lib/sound'
 import { confirmAction, guardClosing, haptic } from '../lib/telegram'
 import { toast, toastError } from '../lib/toast'
-import type { Match, MatchEvent, MatchGoalkeeper, MatchStatus, Player, RosterEntry, Tournament, TournamentTeam } from '../lib/types'
+import type { Match, MatchEvent, MatchGkChange, MatchGoalkeeper, MatchStatus, Player, RosterEntry, Tournament, TournamentTeam } from '../lib/types'
 
 type Entry = RosterEntry & { player: Player }
 type EventKind = 'goal' | 'yellow' | 'red'
@@ -29,11 +29,13 @@ export default function MatchPage() {
   const { userId } = useAuth()
   const [adding, setAdding] = useState<{ kind: EventKind; teamId: string; second: number | null } | null>(null)
   const [editing, setEditing] = useState<MatchEvent | null>(null)
+  // замена вратаря: время фиксируется в момент нажатия кнопки
+  const [changingGk, setChangingGk] = useState<{ teamId: string; second: number | null } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const { data, loading, error, reload } = useQuery(async () => {
     const sent = Date.now()
-    const [m, t, judges, teams, roster, events, gks, absences, schedule, serverNow, tournamentGks] = await Promise.all([
+    const [m, t, judges, teams, roster, events, gks, absences, schedule, serverNow, tournamentGks, gkChanges] = await Promise.all([
       q(supabase.from('matches').select('*').eq('id', matchId!).single()),
       q(supabase.from('tournaments').select('*').eq('id', id!).single()),
       q(supabase.from('tournament_judges').select('profile_id').eq('tournament_id', id!)),
@@ -51,6 +53,8 @@ export default function MatchPage() {
           .select('match_id, team_id, player_id, match:matches!inner(tournament_id)')
           .eq('match.tournament_id', id!),
       ),
+      // до миграции 013 таблицы нет — страница работает без замен
+      q(supabase.from('match_gk_changes').select('*').eq('match_id', matchId!).order('created_at')).catch(() => []),
     ])
     // насколько часы телефона расходятся с сервером
     const clockSkew = serverNow ? new Date(serverNow as string).getTime() - (sent + Date.now()) / 2 : 0
@@ -65,6 +69,7 @@ export default function MatchPage() {
       absent: new Set((absences as { player_id: string }[]).map((a) => a.player_id)),
       schedule: schedule as Pick<Match, 'id' | 'status'>[],
       tournamentGks: tournamentGks as unknown as MatchGoalkeeper[],
+      gkChanges: gkChanges as MatchGkChange[],
       clockSkew,
     }
     // зрители видят счёт и таймер без перезахода: идущий матч — чаще, остальные матчи турнира — реже
@@ -79,7 +84,7 @@ export default function MatchPage() {
   if (loading && !data) return <Page title="Матч" back={back}><Loading /></Page>
   if (error || !data) return <Page title="Матч" back={back}><ErrorBox text={error ?? 'Не найдено'} onRetry={reload} /></Page>
 
-  const { m, t, events, gks, absent } = data
+  const { m, t, events, gks, absent, gkChanges } = data
   const home = data.teams.find((x) => x.id === m.home_team_id)!
   const away = data.teams.find((x) => x.id === m.away_team_id)!
   const canEdit = t.status === 'active' && (t.created_by === userId || data.judges.includes(userId!))
@@ -174,6 +179,21 @@ export default function MatchPage() {
   const timer = (action: 'pause' | 'resume' | 'adjust', delta = 0) =>
     run(() => q(supabase.rpc('match_timer', { p_match: m.id, p_action: action, p_delta: delta })))
 
+  /** Кто стоит в воротах сейчас: последний вышедший на замену, иначе стартовый */
+  const currentKeeper = (teamId: string): string | null => {
+    const changes = gkChanges.filter((c) => c.team_id === teamId)
+    return changes[changes.length - 1]?.player_id ?? gks.find((g) => g.team_id === teamId)?.player_id ?? null
+  }
+
+  const addGkChange = (teamId: string, playerId: string, second: number | null) =>
+    run(() => q(supabase.from('match_gk_changes').insert({ match_id: m.id, team_id: teamId, player_id: playerId, match_second: second })))
+
+  const removeGkChange = (c: MatchGkChange) =>
+    run(async () => {
+      if (!(await confirmAction('Удалить замену вратаря?'))) return
+      await q(supabase.from('match_gk_changes').delete().eq('id', c.id))
+    })
+
   const removeEvent = (ev: MatchEvent) =>
     run(async () => {
       if (!(await confirmAction('Удалить событие?'))) return
@@ -194,16 +214,28 @@ export default function MatchPage() {
         : q(supabase.from('match_absences').insert({ match_id: m.id, player_id: playerId })),
     )
 
-  // счёт по ходу матча для ленты
+  // лента: события и замены вратаря в порядке записи; счёт по ходу матча
   let h = 0
   let a = 0
-  const timeline = events.map((ev) => {
-    if (ev.type === 'goal' || ev.type === 'own_goal') {
-      if (ev.team_id === home.id) h++
-      else a++
-    }
-    return { ev, score: `${h}:${a}` }
-  })
+  const keeperNow = new Map(gks.map((g) => [g.team_id, g.player_id]))
+  const timeline = [
+    ...events.map((ev) => ({ at: ev.created_at, ev, gk: null })),
+    ...gkChanges.map((c) => ({ at: c.created_at, ev: null, gk: c })),
+  ]
+    .sort((x, y) => x.at.localeCompare(y.at))
+    .map((item) => {
+      if (item.gk) {
+        const prev = keeperNow.get(item.gk.team_id) ?? null
+        keeperNow.set(item.gk.team_id, item.gk.player_id)
+        return { key: item.gk.id, gk: item.gk, prev, ev: null, score: '' }
+      }
+      const ev = item.ev!
+      if (ev.type === 'goal' || ev.type === 'own_goal') {
+        if (ev.team_id === home.id) h++
+        else a++
+      }
+      return { key: ev.id, ev, gk: null, prev: null, score: `${h}:${a}` }
+    })
 
   const played_ = m.status !== 'scheduled'
   // следующий по расписанию несыгранный матч
@@ -285,6 +317,13 @@ export default function MatchPage() {
                 <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'red', teamId: team.id, second: elapsedNow() })}>
                   🟥
                 </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setChangingGk({ teamId: team.id, second: elapsedNow() })}
+                  aria-label="Замена вратаря"
+                >
+                  🧤
+                </button>
               </div>
             </div>
           ))}
@@ -297,11 +336,29 @@ export default function MatchPage() {
             <div className="card state">Пока без событий</div>
           ) : (
             <div className="list card">
-              {timeline.map(({ ev, score }) => {
+              {timeline.map(({ key, ev, gk, prev, score }) => {
+                if (gk) {
+                  return (
+                    <div key={key} className={`event ${gk.team_id === home.id ? 'event-home' : 'event-away'}`}>
+                      {gk.match_second != null && <span className="event-time">{eventTime(gk.match_second)}</span>}
+                      <span className="event-icon">🧤</span>
+                      <div className="event-main">
+                        <div className="event-title">{nameOf(gk.player_id)}</div>
+                        <div className="event-sub">встал в ворота{prev ? ` вместо: ${nameOf(prev)}` : ''}</div>
+                      </div>
+                      {canAddEvents && (
+                        <button className="icon-btn" onClick={() => removeGkChange(gk)} aria-label="Удалить замену вратаря">
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )
+                }
+                ev = ev!
                 const isHome = ev.team_id === home.id
                 const isGoal = ev.type === 'goal' || ev.type === 'own_goal'
                 return (
-                  <div key={ev.id} className={`event ${isHome ? 'event-home' : 'event-away'}`}>
+                  <div key={key} className={`event ${isHome ? 'event-home' : 'event-away'}`}>
                     {ev.match_second != null && <span className="event-time">{eventTime(ev.match_second)}</span>}
                     <span className="event-icon">{isGoal ? '⚽' : ev.type === 'yellow' ? '🟨' : '🟥'}</span>
                     <div className="event-main">
@@ -353,6 +410,11 @@ export default function MatchPage() {
                 {canEdit && m.status === 'scheduled' && (suggested || !keeper) && (
                   <span className={`field-hint ${keeper ? '' : 'gk-missing'}`}>
                     {suggested ? 'По позиции «Вратарь»' : 'Нет вратаря в составе — выберите перед началом'}
+                  </span>
+                )}
+                {gkChanges.some((c) => c.team_id === team.id) && (
+                  <span className="field-hint">
+                    Выше — вратарь с начала матча. Сейчас в воротах: <b>{nameOf(currentKeeper(team.id))}</b>
                   </span>
                 )}
               </label>
@@ -412,6 +474,44 @@ export default function MatchPage() {
             await run(() => q(supabase.from('match_events').update(patch).eq('id', editing.id)))
           }}
         />
+      )}
+      {changingGk && (
+        <Sheet open title="Замена вратаря" onClose={() => setChangingGk(null)}>
+          {(() => {
+            const team = changingGk.teamId === home.id ? home : away
+            const current = currentKeeper(team.id)
+            const list = played(team.id === home.id ? homeRoster : awayRoster).filter((r) => r.player_id !== current)
+            return (
+              <>
+                <p className="muted small">
+                  {team.name}
+                  {changingGk.second != null && ` · ${eventTime(changingGk.second)}`} · сейчас в воротах: {current ? nameOf(current) : 'не указан'}.
+                  Кто встаёт в ворота?
+                </p>
+                <div className="list">
+                  {list.map((r) => (
+                    <button
+                      key={r.player_id}
+                      type="button"
+                      className="row"
+                      onClick={() => {
+                        const { teamId, second } = changingGk
+                        setChangingGk(null)
+                        addGkChange(teamId, r.player_id, second)
+                      }}
+                    >
+                      <Avatar src={r.player.photo_url} name={fullName(r.player)} size={32} />
+                      <div className="row-main">
+                        <div className="row-title">{fullName(r.player)}</div>
+                        {r.player.position && <div className="row-sub">{POS_SHORT[r.player.position]}</div>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )
+          })()}
+        </Sheet>
       )}
     </Page>
   )

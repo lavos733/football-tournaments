@@ -1,6 +1,6 @@
 import { computeRatings, type PlayerRating } from './rating'
 import { q, supabase } from './supabase'
-import type { Match, MatchEvent, MatchGoalkeeper, Player, RosterEntry, Tournament, TournamentTeam } from './types'
+import type { Match, MatchEvent, MatchGkChange, MatchGoalkeeper, Player, RosterEntry, Tournament, TournamentTeam } from './types'
 
 export interface RatingsData {
   ratings: Map<string, PlayerRating>
@@ -10,10 +10,10 @@ export interface RatingsData {
 
 /** Загружает историю всех завершённых матчей и пересчитывает рейтинги всех игроков. */
 export async function loadRatings(): Promise<RatingsData> {
-  const [players, tournaments, teams, roster, matches, events, goalkeepers, absences] = await Promise.all([
+  const [players, tournaments, teams, roster, matches, events, goalkeepers, absences, gkChanges] = await Promise.all([
     q<Pick<Player, 'id' | 'position'>[]>(supabase.from('players').select('id, position')),
-    q<Pick<Tournament, 'id' | 'name' | 'created_at' | 'mvp_player_id' | 'winner_team_id' | 'status'>[]>(
-      supabase.from('tournaments').select('id, name, created_at, mvp_player_id, winner_team_id, status'),
+    q<Pick<Tournament, 'id' | 'name' | 'created_at' | 'mvp_player_id' | 'winner_team_id' | 'status' | 'match_minutes'>[]>(
+      supabase.from('tournaments').select('id, name, created_at, mvp_player_id, winner_team_id, status, match_minutes'),
     ),
     q<Pick<TournamentTeam, 'id' | 'name' | 'color'>[]>(supabase.from('tournament_teams').select('id, name, color')),
     q<Pick<RosterEntry, 'tournament_id' | 'tournament_team_id' | 'player_id'>[]>(
@@ -23,9 +23,11 @@ export async function loadRatings(): Promise<RatingsData> {
     all<MatchEvent>((a, b) => supabase.from('match_events').select('*').order('id').range(a, b)),
     all<MatchGoalkeeper>((a, b) => supabase.from('match_goalkeepers').select('*').order('match_id').order('team_id').range(a, b)),
     q<{ match_id: string; player_id: string }[]>(supabase.from('match_absences').select('match_id, player_id')),
+    // до миграции 013 таблицы нет — считаем без замен вратаря
+    all<MatchGkChange>((a, b) => supabase.from('match_gk_changes').select('*').order('id').range(a, b)).catch(() => []),
   ])
   return {
-    ratings: computeRatings({ players, tournaments, roster, matches, events, goalkeepers, absences }),
+    ratings: computeRatings({ players, tournaments, roster, matches, events, goalkeepers, gkChanges, absences }),
     tournaments: new Map(tournaments.map((t) => [t.id, t])),
     teams: new Map(teams.map((t) => [t.id, t])),
   }
