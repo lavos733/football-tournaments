@@ -26,7 +26,8 @@ type ClaimRow = PlayerClaim & { claimant: { display_name: string; username: stri
 export default function PlayerPage() {
   const { id } = useParams()
   const nav = useNavigate()
-  const { userId } = useAuth()
+  const { userId, profile } = useAuth()
+  const isAdmin = Boolean(profile?.is_admin)
   const [editing, setEditing] = useState(false)
 
   const { data, loading, error, reload } = useQuery(async () => {
@@ -67,7 +68,8 @@ export default function PlayerPage() {
 
   const { player: p, history, claims } = data
   const isCreator = p.created_by === userId
-  const canEdit = isCreator || p.linked_profile_id === userId
+  const canEdit = isCreator || p.linked_profile_id === userId || isAdmin
+  const canDecideClaims = isCreator || isAdmin
   const myClaim = claims.find((c) => c.profile_id === userId)
 
   async function claim() {
@@ -146,7 +148,7 @@ export default function PlayerPage() {
         )}
       </div>
 
-      {isCreator && claims.length > 0 && (
+      {canDecideClaims && claims.length > 0 && (
         <Section title="Заявки «Это я»">
           <div className="list card">
             {claims.map((c) => (

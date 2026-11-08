@@ -20,19 +20,21 @@ export default function ProfilePage() {
 
   useEffect(() => setName(profile?.display_name ?? ''), [profile])
 
+  const isAdmin = Boolean(profile?.is_admin)
+
   const { data, reload } = useQuery(async () => {
+    let claims = supabase
+      .from('player_claims')
+      .select('*, player:players!inner(id, first_name, last_name, photo_url, created_by), claimant:profiles(display_name, username)')
+      .eq('status', 'pending')
+    // администратор видит все заявки, остальные — только к созданным ими игрокам
+    if (!isAdmin) claims = claims.eq('player.created_by', userId!)
     const [me, incoming] = await Promise.all([
       q(supabase.from('players').select('*').eq('linked_profile_id', userId!).maybeSingle()),
-      q(
-        supabase
-          .from('player_claims')
-          .select('*, player:players!inner(id, first_name, last_name, photo_url, created_by), claimant:profiles(display_name, username)')
-          .eq('status', 'pending')
-          .eq('player.created_by', userId!),
-      ),
+      q(claims.order('created_at')),
     ])
     return { me: me as Player | null, incoming: incoming as unknown as IncomingClaim[] }
-  }, [userId])
+  }, [userId, isAdmin])
 
   async function saveName() {
     if (!name.trim() || name.trim() === profile?.display_name) return
@@ -62,6 +64,7 @@ export default function ProfilePage() {
             <input value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName} />
           </Field>
           {profile?.username && <p className="muted small">Telegram: @{profile.username}</p>}
+          {isAdmin && <p className="muted small">Вы администратор: можете править любых игроков и подтверждать все заявки «Это я».</p>}
           <div className="profile-id">
             <span className="muted small">ID профиля</span>
             <code>{userId}</code>

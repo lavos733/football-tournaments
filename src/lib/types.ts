@@ -8,6 +8,8 @@ export interface Profile {
   display_name: string
   telegram_id: number | null
   username: string | null
+  /** администратор: правит любого игрока и рассматривает все заявки «Это я» (до миграции 011 поля нет) */
+  is_admin?: boolean
 }
 
 export interface Player {
