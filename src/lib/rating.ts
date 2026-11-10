@@ -17,6 +17,8 @@ const SCALE = 20
 const K_TEAM = 1.2
 /** Множитель личного вклада */
 const K_PERSONAL = 0.5
+/** Во сколько раз голы и передачи весят больше базовых весов позиции (подравнивает личное и командное) */
+const ATTACK_BOOST = 2
 /** Предел изменения за матч у откалиброванного игрока */
 const MAX_DELTA = 2.5
 
@@ -162,9 +164,20 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
   const eventsBy = new Map<string, MatchEvent[]>()
   input.events.forEach((e) => eventsBy.set(e.match_id, [...(eventsBy.get(e.match_id) ?? []), e]))
 
-  // среднее число пропущенных командой за матч — накапливается по ходу истории (априори 1.5)
-  let gaSum = 1.5 * 4
-  let gaCnt = 4
+  // Средние уровни накапливаются по ходу истории, всё — в пересчёте на минуту игры,
+  // чтобы матчи по 5 и по 10 минут сравнивались честно:
+  // сколько пропускает команда (априори 1 за 10 минут) и как часто играет на ноль (априори в 30% матчей)
+  let gaSum = 1 * 4
+  let gaMinutes = 10 * 4
+  let cleanSum = 0.3 * 4
+  let teamMatches = 4
+  // сколько голов и передач приходится на игрока каждой роли (априори 0,2 гола и 0,14 передачи за 10 минут):
+  // от нападающего ждут голов как от среднего нападающего, от защитника — как от среднего защитника
+  const rates = {} as Record<MatchRole, { goals: number; assists: number; minutes: number }>
+  for (const r of Object.keys(ROLE) as MatchRole[]) rates[r] = { goals: 0.2 * 10, assists: 0.14 * 10, minutes: 10 * 10 }
+  const expAttack = (r: MatchRole, w: (typeof ROLE)[MatchRole], minutes: number) =>
+    ((w.goal * rates[r].goals + w.assist * rates[r].assists) / rates[r].minutes) * minutes
+  const played: [MatchRole, number, number, number][] = []
 
   for (const t of tOrder) {
     const matches = input.matches
@@ -181,7 +194,10 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
       ].map((s) => ({ ...s, lineup: rosterOf(s.team).filter((p) => !absent.has(`${m.id}:${p}`)) }))
       const avgOf = (ids: string[]) => avg(ids.map((id) => get(id).rating))
       const avgs = sides.map((s) => avgOf(s.lineup))
-      const baselineGA = gaSum / gaCnt
+      const minutes = t.match_minutes ?? 10
+      const baselineGA = (gaSum / gaMinutes) * minutes
+      const pClean = cleanSum / teamMatches
+      played.length = 0
 
       const updates: [string, number, RatingChange][] = []
       sides.forEach((s, i) => {
@@ -211,14 +227,20 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
 
           // личный вклад: голы/ассисты и оборона относительно среднего уровня,
           // против более сильного соперника (относительно себя) стоит дороже
-          const attack = mix('goal') * goals + mix('assist') * assists
+          const attack = ATTACK_BOOST * (mix('goal') * goals + mix('assist') * assists)
           // оборона в поле — по пропущенным командой; в воротах — по пропущенным за свой отрезок
-          const fieldDefense = field.conceded * (baselineGA - s.ga) + (s.ga === 0 ? field.clean : 0)
+          // сухой матч — относительно того, как часто команды вообще играют на ноль: иначе рейтинг всех растёт
+          const fieldDefense = field.conceded * (baselineGA - s.ga) + field.clean * ((s.ga === 0 ? 1 : 0) - pClean)
           const gkConceded = spell?.conceded ?? 0
-          const gkDefense = f > 0 ? gkw.conceded * (f * baselineGA - gkConceded) + (gkConceded === 0 && f >= 0.5 ? gkw.clean * f : 0) : 0
+          const gkDefense =
+            f > 0
+              ? gkw.conceded * (f * baselineGA - gkConceded) + (f >= 0.5 ? gkw.clean * f * ((gkConceded === 0 ? 1 : 0) - pClean) : 0)
+              : 0
           const defense = (1 - f) * fieldDefense + gkDefense
-          // ожидаемый вклад: средний по матчу у равного по силе полевого — ~0.25 очка атаки
-          const expectedAttack = (mix('goal') + mix('assist')) * 0.25
+          // ожидаемый вклад — средние голы и передачи игрока той же роли за матч такой длины
+          const fr = fieldRole(position.get(pid) ?? null)
+          const expectedAttack = ATTACK_BOOST * ((1 - f) * expAttack(fr, field, minutes) + f * expAttack('GK', gkw, minutes))
+          played.push([role, goals, assists, minutes])
           const oppFactor = clamp(Math.pow(10, (oppAvg - pr.rating) / (2 * SCALE)), 0.6, 1.6)
           const personal = K_PERSONAL * (attack - expectedAttack + defense) * (attack - expectedAttack + defense > 0 ? oppFactor : 1 / oppFactor)
           const team = teamBase * mix('team')
@@ -249,7 +271,14 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
         pr.points.push(next)
       }
       gaSum += sides[0].ga + sides[1].ga
-      gaCnt += 2
+      gaMinutes += 2 * minutes
+      cleanSum += (sides[0].ga === 0 ? 1 : 0) + (sides[1].ga === 0 ? 1 : 0)
+      teamMatches += 2
+      for (const [r, g, a, min] of played) {
+        rates[r].goals += g
+        rates[r].assists += a
+        rates[r].minutes += min
+      }
     }
 
     if (t.status === 'finished') {

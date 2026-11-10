@@ -4,6 +4,7 @@ import { PlayerForm } from '../components/PlayerForm'
 import { Avatar, Empty, ErrorBox, Loading, Page } from '../components/ui'
 import { POS_SHORT, ageLabel, fullName } from '../lib/format'
 import { useQuery } from '../lib/hooks'
+import { loadRatings } from '../lib/ratingData'
 import { q, supabase } from '../lib/supabase'
 import type { Player } from '../lib/types'
 
@@ -11,14 +12,18 @@ export default function PlayersPage() {
   const nav = useNavigate()
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
-  const { data, loading, error, reload } = useQuery(
-    () => q(supabase.from('players').select('*').order('last_name').order('first_name').limit(1000)),
-    [],
-  )
+  const { data, loading, error, reload } = useQuery(async () => {
+    const [players, ratings] = await Promise.all([
+      q<Player[]>(supabase.from('players').select('*').order('last_name').order('first_name').limit(1000)),
+      // рейтинг не обязателен: если не загрузился — список показывается без него
+      loadRatings().catch(() => null),
+    ])
+    return { players, ratings: ratings?.ratings }
+  }, [])
 
   const list = useMemo(() => {
     const s = search.trim().toLowerCase()
-    const all = (data as Player[] | undefined) ?? []
+    const all = data?.players ?? []
     return s ? all.filter((p) => fullName(p).toLowerCase().includes(s)) : all
   }, [data, search])
 
@@ -53,7 +58,19 @@ export default function PlayersPage() {
                 <div className="row-title">
                   {fullName(p)} {p.linked_profile_id && <span className="verified" title="Подтверждённый профиль">✓</span>}
                 </div>
-                <div className="row-sub">{[p.position && POS_SHORT[p.position], ageLabel(p.birth_date)].filter(Boolean).join(' · ') || '—'}</div>
+                <div className="row-sub">
+                  {[p.position && POS_SHORT[p.position], ageLabel(p.birth_date)].filter(Boolean).join(' · ')}
+                  {(() => {
+                    const r = data?.ratings?.get(p.id)
+                    if (!r) return p.position || p.birth_date ? null : '—'
+                    return (
+                      <>
+                        {(p.position || p.birth_date) && ' · '}
+                        <span className={`ovr-inline ${r.provisional ? 'provisional' : ''}`}>OVR {r.ovr}</span>
+                      </>
+                    )
+                  })()}
+                </div>
               </div>
               <span className="chevron">›</span>
             </Link>

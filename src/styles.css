@@ -831,12 +831,19 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* «Гол» — на всю ширину, карточки и замена вратаря — строкой под ним: в половине экрана в ряд не помещаются */
 .event-col-btns {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
+.event-col-btns .btn {
+  min-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
 .event-col-btns .btn:first-child {
-  flex: 1;
+  grid-column: 1 / -1;
 }
 .event {
   display: flex;
@@ -1339,4 +1346,14 @@ select {
 /* вратарь матча не выбран — без него матч не начать */
 .field-hint.gk-missing {
   color: var(--danger);
+}
+
+/* рейтинг в строке списка игроков */
+.ovr-inline {
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.ovr-inline.provisional {
+  color: var(--muted);
 }
