@@ -9,6 +9,7 @@ import { ErrorBox, Loading, Page, Section, Segmented, Sheet, TeamBadge } from '.
 import { useAuth } from '../lib/auth'
 import { ROSTER_LIMITS, STATUS_LABEL, fullName, playersCount, plural } from '../lib/format'
 import { useQuery } from '../lib/hooks'
+import { loadRatings, teamAverage } from '../lib/ratingData'
 import { computeStandings } from '../lib/standings'
 import { q, supabase } from '../lib/supabase'
 import { confirmAction, haptic } from '../lib/telegram'
@@ -41,7 +42,18 @@ export default function TournamentPage() {
       q(supabase.from('roster_entries').select('tournament_team_id, player:players(id, first_name, last_name, photo_url)').eq('tournament_id', id!)),
       q(supabase.from('series_tournaments').select('series:series(id, name)').eq('tournament_id', id!)),
     ])
+    // средний рейтинг команды: после старта — зафиксированный, до старта (или если не зафиксирован) — по текущему составу
+    const needLive = (t as TRow).status === 'draft' || (teams as TeamRow[]).some((x) => x.avg_rating == null)
+    const ratings = needLive ? (await loadRatings().catch(() => null))?.ratings : undefined
+    const rosterRows = roster as { tournament_team_id: string; player: MiniPlayer }[]
+    const teamRating = new Map(
+      (teams as TeamRow[]).map((x) => {
+        const live = ratings ? teamAverage(ratings, rosterRows.filter((r) => r.tournament_team_id === x.id).map((r) => r.player.id)) : null
+        return [x.id, (t as TRow).status !== 'draft' && x.avg_rating != null ? Number(x.avg_rating) : live] as const
+      }),
+    )
     return {
+      teamRating,
       rosterTeam: new Map((roster as { tournament_team_id: string; player: MiniPlayer }[]).map((r) => [r.player.id, r.tournament_team_id])),
       series: (seriesRows as { series: Pick<Series, 'id' | 'name'> }[]).map((r) => r.series),
       t: t as TRow,
@@ -102,7 +114,17 @@ export default function TournamentPage() {
   const start = () =>
     run(async () => {
       if (!(await confirmAction('Начать турнир? Состав команд и расписание будут зафиксированы.'))) return
-      await q(supabase.rpc('start_tournament', { p_tournament: t.id }))
+      // фиксируем средний рейтинг команд на момент старта (по свежим данным)
+      const fresh = (await loadRatings().catch(() => null))?.ratings
+      const ratings = fresh
+        ? Object.fromEntries(
+            teams.map((x) => [x.id, teamAverage(fresh, [...data.rosterTeam].filter(([, tid]) => tid === x.id).map(([pid]) => pid))]),
+          )
+        : null
+      const { error } = await supabase.rpc('start_tournament', { p_tournament: t.id, p_ratings: ratings })
+      // до миграции 014 у функции нет параметра p_ratings — стартуем без фиксации рейтинга
+      if (error && error.code === 'PGRST202') await q(supabase.rpc('start_tournament', { p_tournament: t.id }))
+      else if (error) throw error
       haptic('success')
     })
 
@@ -248,7 +270,14 @@ export default function TournamentPage() {
                   <Link key={x.id} to={`/tournaments/${t.id}/teams/${x.id}`} className="row">
                     <TeamBadge color={x.color} size={24} />
                     <div className="row-main">
-                      <div className="row-title">{x.name}</div>
+                      <div className="row-title">
+                        {x.name}
+                        {data.teamRating.get(x.id) != null && (
+                          <span className="team-ovr" title={t.status === 'draft' ? 'Средний рейтинг состава сейчас' : 'Средний рейтинг состава на старте турнира'}>
+                            OVR {Math.round(data.teamRating.get(x.id)!)}
+                          </span>
+                        )}
+                      </div>
                       <div className={`row-sub ${ok ? '' : 'text-danger'}`}>
                         {playersCount(c)}
                         {!ok && ` · нужно ${min}–${max}`}

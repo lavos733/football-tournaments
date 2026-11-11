@@ -6,6 +6,7 @@ import { Avatar, ErrorBox, Loading, Page, Section, TeamBadge } from '../componen
 import { useAuth } from '../lib/auth'
 import { POS_SHORT, ROSTER_LIMITS, fullName } from '../lib/format'
 import { useQuery } from '../lib/hooks'
+import { loadRatings, teamAverage } from '../lib/ratingData'
 import { q, supabase } from '../lib/supabase'
 import { confirmAction } from '../lib/telegram'
 import { toastError } from '../lib/toast'
@@ -29,7 +30,13 @@ export default function TournamentTeamPage() {
       q(supabase.from('roster_entries').select('player_id, tournament_team_id').eq('tournament_id', id!)),
       q(supabase.from('tournament_judges').select('profile_id').eq('tournament_id', id!)),
     ])
+    // средний рейтинг: после старта — зафиксированный, до старта (или если не зафиксирован) — по текущему составу
+    const tt = (teams as TournamentTeam[]).find((x) => x.id === teamId)
+    const fixed = (t as Tournament).status !== 'draft' && tt?.avg_rating != null ? Number(tt.avg_rating) : null
+    const ratings = fixed == null ? (await loadRatings().catch(() => null))?.ratings : undefined
+    const teamRating = fixed ?? (ratings ? teamAverage(ratings, (roster as Entry[]).map((r) => r.player_id)) : null)
     return {
+      teamRating,
       t: t as Tournament,
       teams: teams as TournamentTeam[],
       roster: roster as Entry[],
@@ -129,7 +136,17 @@ export default function TournamentTeamPage() {
     >
       <div className="hero card">
         <TeamBadge color={team.color} size={48} />
-        <div className="hero-name">{team.name}</div>
+        <div className="hero-name">
+          {team.name}
+          {data.teamRating != null && (
+            <span className="team-ovr" title={t.status === 'draft' ? 'Средний рейтинг состава сейчас' : 'Средний рейтинг состава на старте турнира'}>
+              OVR {Math.round(data.teamRating)}
+            </span>
+          )}
+        </div>
+        {data.teamRating != null && (
+          <div className="hero-note">{t.status === 'draft' ? 'Средний рейтинг состава сейчас' : 'Средний рейтинг состава на старте турнира'}</div>
+        )}
         <div className="hero-sub">{t.name}</div>
       </div>
 

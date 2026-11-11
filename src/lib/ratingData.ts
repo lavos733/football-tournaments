@@ -1,4 +1,4 @@
-import { computeRatings, type PlayerRating } from './rating'
+import { RATING_START, computeRatings, type PlayerRating } from './rating'
 import { q, supabase } from './supabase'
 import type { Match, MatchEvent, MatchGkChange, MatchGoalkeeper, Player, RosterEntry, Tournament, TournamentTeam } from './types'
 
@@ -41,4 +41,11 @@ async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: un
     out.push(...rows)
     if (rows.length < 1000) return out
   }
+}
+
+/** Средний рейтинг состава (по точным, неокруглённым значениям); null — состав пуст */
+export function teamAverage(ratings: RatingsData['ratings'], playerIds: string[]): number | null {
+  if (playerIds.length === 0) return null
+  const sum = playerIds.reduce((s, id) => s + (ratings.get(id)?.rating ?? RATING_START), 0)
+  return Math.round((sum / playerIds.length) * 10) / 10
 }

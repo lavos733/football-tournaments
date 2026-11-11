@@ -69,6 +69,8 @@ export interface TournamentTeam {
   name: string
   color: string
   seed: number | null
+  /** средний рейтинг состава на старте турнира (миграция 014); null — не зафиксирован */
+  avg_rating?: number | string | null
   created_at: string
 }
 
