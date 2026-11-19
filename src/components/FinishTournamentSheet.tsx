@@ -13,6 +13,7 @@ export function MvpSelect({
   players,
   rosterTeam,
   disabled,
+  emptyLabel = '— не выбран —',
 }: {
   value: string
   onChange(id: string): void
@@ -20,10 +21,11 @@ export function MvpSelect({
   players: Map<string, MiniPlayer>
   rosterTeam: Map<string, string>
   disabled?: boolean
+  emptyLabel?: string
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-      <option value="">— не выбран —</option>
+      <option value="">{emptyLabel}</option>
       {teams.map((team) => (
         <optgroup key={team.id} label={team.name}>
           {[...players.values()]
@@ -40,6 +42,43 @@ export function MvpSelect({
   )
 }
 
+/** Гол турнира для «Премии Пушкаша» */
+export interface GoalOption {
+  id: string
+  player_id: string
+  label: string
+}
+
+/** Выбор лучшего гола турнира — список всех голов с автором, по турам. */
+export function GoalSelect({
+  value,
+  onChange,
+  goals,
+  disabled,
+}: {
+  value: string
+  onChange(id: string): void
+  goals: GoalOption[]
+  disabled?: boolean
+}) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled || goals.length === 0}>
+      <option value="">{goals.length === 0 ? '— голов нет —' : '— никому, не выдаём —'}</option>
+      {goals.map((g) => (
+        <option key={g.id} value={g.id}>
+          {g.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+export interface TournamentAwards {
+  mvp: string | null
+  worst: string | null
+  goal: string | null
+}
+
 export function FinishTournamentSheet({
   open,
   winner,
@@ -47,7 +86,10 @@ export function FinishTournamentSheet({
   players,
   rosterTeam,
   stats,
+  goals,
   initialMvp,
+  initialWorst,
+  initialGoal,
   onClose,
   onSubmit,
 }: {
@@ -57,16 +99,24 @@ export function FinishTournamentSheet({
   players: Map<string, MiniPlayer>
   rosterTeam: Map<string, string>
   stats: PlayerTournamentStats[]
+  goals: GoalOption[]
   initialMvp: string | null
+  initialWorst: string | null
+  initialGoal: string | null
   onClose(): void
-  onSubmit(mvpId: string | null): Promise<void>
+  onSubmit(awards: TournamentAwards): Promise<void>
 }) {
   const [mvp, setMvp] = useState('')
+  const [worst, setWorst] = useState('')
+  const [goal, setGoal] = useState('')
   const [busy, setBusy] = useState(false)
 
   // подсказка: по умолчанию — лучший по «гол + пас»
   useEffect(() => {
     if (!open) return
+    // антипремии и премии за гол не угадываем: по умолчанию — не выдаются
+    setWorst(initialWorst ?? '')
+    setGoal(initialGoal ?? '')
     if (initialMvp) return setMvp(initialMvp)
     const best = [...stats].sort((a, b) => b.goals + b.assists - (a.goals + a.assists) || b.goals - a.goals)[0]
     setMvp(best && best.goals + best.assists > 0 ? best.player_id : '')
@@ -91,13 +141,19 @@ export function FinishTournamentSheet({
         <Field label="Лучший игрок турнира" hint="Предложен игрок с наибольшим «гол + пас». Можно выбрать любого или поменять позже.">
           <MvpSelect value={mvp} onChange={setMvp} teams={teams} players={players} rosterTeam={rosterTeam} />
         </Field>
+        <Field label="🎯 Премия Пушкаша — лучший гол" hint="+0,5 к рейтингу автора гола. Можно не выдавать.">
+          <GoalSelect value={goal} onChange={setGoal} goals={goals} />
+        </Field>
+        <Field label="🍓 Волчья малина — худший игрок" hint="−0,5 к рейтингу. Можно не выдавать.">
+          <MvpSelect value={worst} onChange={setWorst} teams={teams} players={players} rosterTeam={rosterTeam} emptyLabel="— никому, не выдаём —" />
+        </Field>
         <button
           className="btn btn-primary btn-block"
           disabled={busy || !winner}
           onClick={async () => {
             setBusy(true)
             try {
-              await onSubmit(mvp || null)
+              await onSubmit({ mvp: mvp || null, worst: worst || null, goal: goal || null })
             } finally {
               setBusy(false)
             }

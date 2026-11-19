@@ -23,7 +23,8 @@ const ATTACK_BOOST = 2
 const MAX_DELTA = 2.5
 
 const PENALTY = { yellow: -0.3, red: -1.0, own_goal: -0.6 }
-const BONUS = { mvp: 1.5, champion: 0.75 }
+/** Награды по итогам турнира: MVP, победа, «Премия Пушкаша» (лучший гол), «Волчья малина» (худший игрок) */
+const BONUS = { mvp: 1.5, champion: 0.75, puskas: 0.5, razzie: -0.5 }
 
 /** Как роль весит компоненты матча */
 const ROLE: Record<MatchRole, { team: number; goal: number; assist: number; conceded: number; clean: number }> = {
@@ -62,7 +63,7 @@ export interface RatingChange {
 
 export interface TournamentBonus {
   tournament_id: string
-  kind: 'mvp' | 'champion'
+  kind: 'mvp' | 'champion' | 'puskas' | 'razzie'
   delta: number
 }
 
@@ -81,7 +82,8 @@ export interface PlayerRating {
 
 export interface RatingInput {
   players: Pick<Player, 'id' | 'position'>[]
-  tournaments: Pick<Tournament, 'id' | 'created_at' | 'mvp_player_id' | 'winner_team_id' | 'status' | 'match_minutes'>[]
+  tournaments: (Pick<Tournament, 'id' | 'created_at' | 'mvp_player_id' | 'winner_team_id' | 'status' | 'match_minutes'> &
+    Partial<Pick<Tournament, 'worst_player_id' | 'best_goal_event_id'>>)[]
   roster: Pick<RosterEntry, 'tournament_id' | 'tournament_team_id' | 'player_id'>[]
   matches: Match[]
   events: MatchEvent[]
@@ -291,6 +293,9 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
       }
       if (t.winner_team_id) input.roster.filter((r) => r.tournament_team_id === t.winner_team_id).forEach((r) => bonus(r.player_id, 'champion'))
       if (t.mvp_player_id) bonus(t.mvp_player_id, 'mvp')
+      const puskas = t.best_goal_event_id ? input.events.find((e) => e.id === t.best_goal_event_id)?.player_id : null
+      if (puskas) bonus(puskas, 'puskas')
+      if (t.worst_player_id) bonus(t.worst_player_id, 'razzie')
     }
   }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CALIBRATION_MATCHES, RATING_START, type PlayerRating, type RatingChange } from '../lib/rating'
+import { CALIBRATION_MATCHES, RATING_START, type PlayerRating, type RatingChange, type TournamentBonus } from '../lib/rating'
 import type { RatingsData } from '../lib/ratingData'
 import type { Position } from '../lib/types'
 import { POSITIONS, plural } from '../lib/format'
@@ -113,12 +113,19 @@ function RatingDetails({ rating: r, position, data }: { rating: PlayerRating; po
         <p className="muted small">
           Бонусы:{' '}
           {r.bonuses
-            .map((b) => `${b.kind === 'mvp' ? '⭐ лучший игрок' : '🏆 победа'} «${data.tournaments.get(b.tournament_id)?.name ?? 'турнир'}» ${signed(b.delta)}`)
+            .map((b) => `${BONUS_LABEL[b.kind]} «${data.tournaments.get(b.tournament_id)?.name ?? 'турнир'}» ${signed(b.delta)}`)
             .join(', ')}
         </p>
       )}
     </div>
   )
+}
+
+const BONUS_LABEL: Record<TournamentBonus['kind'], string> = {
+  mvp: '⭐ лучший игрок',
+  champion: '🏆 победа',
+  puskas: '🎯 премия Пушкаша',
+  razzie: '🍓 волчья малина',
 }
 
 function resultWord(c: RatingChange) {

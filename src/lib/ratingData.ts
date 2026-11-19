@@ -12,9 +12,8 @@ export interface RatingsData {
 export async function loadRatings(): Promise<RatingsData> {
   const [players, tournaments, teams, roster, matches, events, goalkeepers, absences, gkChanges] = await Promise.all([
     q<Pick<Player, 'id' | 'position'>[]>(supabase.from('players').select('id, position')),
-    q<Pick<Tournament, 'id' | 'name' | 'created_at' | 'mvp_player_id' | 'winner_team_id' | 'status' | 'match_minutes'>[]>(
-      supabase.from('tournaments').select('id, name, created_at, mvp_player_id, winner_team_id, status, match_minutes'),
-    ),
+    // «*»: поля наград (миграция 016) могут ещё отсутствовать — тогда награды просто не учитываются
+    q<Tournament[]>(supabase.from('tournaments').select('*')),
     q<Pick<TournamentTeam, 'id' | 'name' | 'color'>[]>(supabase.from('tournament_teams').select('id, name, color')),
     q<Pick<RosterEntry, 'tournament_id' | 'tournament_team_id' | 'player_id'>[]>(
       supabase.from('roster_entries').select('tournament_id, tournament_team_id, player_id'),

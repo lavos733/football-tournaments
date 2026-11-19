@@ -51,6 +51,10 @@ export interface Tournament {
   status: TournamentStatus
   mvp_player_id: string | null
   winner_team_id: string | null
+  /** «Волчья малина» — худший игрок турнира (миграция 016); null — не выдаётся */
+  worst_player_id?: string | null
+  /** «Премия Пушкаша» — лучший гол турнира, id события (миграция 016); null — не выдаётся */
+  best_goal_event_id?: string | null
   created_by: string
   created_at: string
 }

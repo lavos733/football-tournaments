@@ -14,8 +14,8 @@ import { computeStandings } from '../lib/standings'
 import { q, supabase } from '../lib/supabase'
 import { confirmAction, haptic } from '../lib/telegram'
 import { toast, toastError } from '../lib/toast'
-import type { Match, Player, PlayerTournamentStats, Series, Team, Tournament, TournamentTeam } from '../lib/types'
-import { FinishTournamentSheet, MvpSelect } from '../components/FinishTournamentSheet'
+import type { Match, MatchEvent, Player, PlayerTournamentStats, Series, Team, Tournament, TournamentTeam } from '../lib/types'
+import { FinishTournamentSheet, GoalSelect, MvpSelect, type GoalOption, type TournamentAwards } from '../components/FinishTournamentSheet'
 
 type TRow = Tournament & { organizer: { display_name: string } | null }
 type TeamRow = TournamentTeam & { roster_entries: { count: number }[] }
@@ -46,6 +46,7 @@ export default function TournamentPage() {
     const needLive = (t as TRow).status === 'draft' || (teams as TeamRow[]).some((x) => x.avg_rating == null)
     const ratings = needLive ? (await loadRatings().catch(() => null))?.ratings : undefined
     const rosterRows = roster as { tournament_team_id: string; player: MiniPlayer }[]
+    const goals = (t as TRow).status === 'draft' ? [] : await loadGoals(matches as Match[], teams as TeamRow[], rosterRows)
     const teamRating = new Map(
       (teams as TeamRow[]).map((x) => {
         const live = ratings ? teamAverage(ratings, rosterRows.filter((r) => r.tournament_team_id === x.id).map((r) => r.player.id)) : null
@@ -53,6 +54,7 @@ export default function TournamentPage() {
       }),
     )
     return {
+      goals,
       teamRating,
       rosterTeam: new Map((roster as { tournament_team_id: string; player: MiniPlayer }[]).map((r) => [r.player.id, r.tournament_team_id])),
       series: (seriesRows as { series: Pick<Series, 'id' | 'name'> }[]).map((r) => r.series),
@@ -134,16 +136,20 @@ export default function TournamentPage() {
       await q(supabase.rpc('reset_tournament_to_draft', { p_tournament: t.id }))
     })
 
-  const finish = (mvpId: string | null) =>
+  const finish = (a: TournamentAwards) =>
     run(async () => {
-      if (mvpId !== t.mvp_player_id) await q(supabase.from('tournaments').update({ mvp_player_id: mvpId }).eq('id', t.id))
+      const patch: Partial<Tournament> = {}
+      if (a.mvp !== t.mvp_player_id) patch.mvp_player_id = a.mvp
+      if (a.worst !== (t.worst_player_id ?? null)) patch.worst_player_id = a.worst
+      if (a.goal !== (t.best_goal_event_id ?? null)) patch.best_goal_event_id = a.goal
+      if (Object.keys(patch).length > 0) await q(supabase.from('tournaments').update(patch).eq('id', t.id))
       await q(supabase.rpc('finish_tournament', { p_tournament: t.id, p_winner: computeStandings(teams, matches)[0]!.team.id }))
       haptic('success')
       setFinishing(false)
       setTab('table')
     })
 
-  const setMvp = (mvpId: string) => run(() => q(supabase.from('tournaments').update({ mvp_player_id: mvpId || null }).eq('id', t.id)))
+  const setAward = (patch: Partial<Tournament>) => run(() => q(supabase.from('tournaments').update(patch).eq('id', t.id)))
 
   const reopen = () =>
     run(async () => {
@@ -154,6 +160,9 @@ export default function TournamentPage() {
   const allFinished = matches.length > 0 && matches.every((m) => m.status === 'finished')
   const champion = t.status === 'finished' ? teams.find((x) => x.id === t.winner_team_id) ?? computeStandings(teams, matches)[0]?.team : undefined
   const mvp = t.mvp_player_id ? data.players.get(t.mvp_player_id) : undefined
+  const worst = t.worst_player_id ? data.players.get(t.worst_player_id) : undefined
+  const bestGoal = t.best_goal_event_id ? data.goals.find((g) => g.id === t.best_goal_event_id) : undefined
+  const bestGoalPlayer = bestGoal ? data.players.get(bestGoal.player_id) : undefined
 
   async function removeTournament() {
     if (!(await confirmAction(`Удалить турнир «${t.name}» целиком?`))) return
@@ -216,16 +225,54 @@ export default function TournamentPage() {
               <TeamBadge color={champion.color} /> {champion.name}
             </div>
             {canManage ? (
-              <label className="field champion-mvp">
-                <span className="field-label">⭐ Лучший игрок турнира</span>
-                <MvpSelect value={t.mvp_player_id ?? ''} onChange={setMvp} teams={teams} players={data.players} rosterTeam={data.rosterTeam} disabled={busy} />
-              </label>
+              <>
+                <label className="field champion-mvp">
+                  <span className="field-label">⭐ Лучший игрок турнира</span>
+                  <MvpSelect
+                    value={t.mvp_player_id ?? ''}
+                    onChange={(v) => setAward({ mvp_player_id: v || null })}
+                    teams={teams}
+                    players={data.players}
+                    rosterTeam={data.rosterTeam}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="field champion-mvp">
+                  <span className="field-label">🎯 Премия Пушкаша — лучший гол (+0,5)</span>
+                  <GoalSelect value={t.best_goal_event_id ?? ''} onChange={(v) => setAward({ best_goal_event_id: v || null })} goals={data.goals} disabled={busy} />
+                </label>
+                <label className="field champion-mvp">
+                  <span className="field-label">🍓 Волчья малина — худший игрок (−0,5)</span>
+                  <MvpSelect
+                    value={t.worst_player_id ?? ''}
+                    onChange={(v) => setAward({ worst_player_id: v || null })}
+                    teams={teams}
+                    players={data.players}
+                    rosterTeam={data.rosterTeam}
+                    disabled={busy}
+                    emptyLabel="— никому, не выдаём —"
+                  />
+                </label>
+              </>
             ) : (
-              mvp && (
-                <Link to={`/players/${mvp.id}`} className="champion-mvp-link">
-                  ⭐ Лучший игрок: <b>{fullName(mvp)}</b>
-                </Link>
-              )
+              <>
+                {mvp && (
+                  <Link to={`/players/${mvp.id}`} className="champion-mvp-link">
+                    ⭐ Лучший игрок: <b>{fullName(mvp)}</b>
+                  </Link>
+                )}
+                {bestGoal && bestGoalPlayer && (
+                  <Link to={`/players/${bestGoalPlayer.id}`} className="champion-mvp-link">
+                    🎯 Премия Пушкаша: <b>{fullName(bestGoalPlayer)}</b>
+                    <span className="muted"> · {bestGoal.label.split(' · ').slice(1).join(' · ')}</span>
+                  </Link>
+                )}
+                {worst && (
+                  <Link to={`/players/${worst.id}`} className="champion-mvp-link">
+                    🍓 Волчья малина: <b>{fullName(worst)}</b>
+                  </Link>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -375,7 +422,10 @@ export default function TournamentPage() {
         players={data.players}
         rosterTeam={data.rosterTeam}
         stats={data.stats}
+        goals={data.goals}
         initialMvp={t.mvp_player_id}
+        initialWorst={t.worst_player_id ?? null}
+        initialGoal={t.best_goal_event_id ?? null}
         onClose={() => setFinishing(false)}
         onSubmit={finish}
       />
@@ -552,4 +602,47 @@ function AddTeamSheet({
       />
     </>
   )
+}
+
+/** Голы турнира с автором — для «Премии Пушкаша»: «Игрок · тур N · м:сс · против «Команды»» */
+async function loadGoals(
+  matches: Match[],
+  teams: TournamentTeam[],
+  roster: { player: Pick<Player, 'id' | 'first_name' | 'last_name'> }[],
+): Promise<GoalOption[]> {
+  if (matches.length === 0) return []
+  type Row = Pick<MatchEvent, 'id' | 'match_id' | 'team_id' | 'player_id' | 'match_second' | 'created_at'>
+  const rows = await q<Row[]>(
+    supabase
+      .from('match_events')
+      .select('id, match_id, team_id, player_id, match_second, created_at')
+      .eq('type', 'goal')
+      .not('player_id', 'is', null)
+      .in('match_id', matches.map((m) => m.id)),
+  )
+  const matchById = new Map(matches.map((m) => [m.id, m]))
+  const teamName = new Map(teams.map((x) => [x.id, x.name]))
+  const player = new Map(roster.map((r) => [r.player.id, r.player]))
+  const key = (e: Row) => {
+    const m = matchById.get(e.match_id)!
+    return [m.matchday, m.position, e.match_second ?? Infinity]
+  }
+  return rows
+    .filter((e) => matchById.has(e.match_id))
+    .sort((a, b) => {
+      const [x, y] = [key(a), key(b)]
+      return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.created_at.localeCompare(b.created_at)
+    })
+    .map((e) => {
+      const m = matchById.get(e.match_id)!
+      const opp = m.home_team_id === e.team_id ? m.away_team_id : m.home_team_id
+      const p = player.get(e.player_id!)
+      const sec = e.match_second
+      const time = sec != null ? ` · ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : ''
+      return {
+        id: e.id,
+        player_id: e.player_id!,
+        label: `${p ? fullName(p) : 'Игрок'} · тур ${m.matchday}${time} · против «${teamName.get(opp) ?? 'соперник'}»`,
+      }
+    })
 }

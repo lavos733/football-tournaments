@@ -71,6 +71,11 @@ export default function PlayerPage() {
   const canEdit = isCreator || p.linked_profile_id === userId || isAdmin
   const canDecideClaims = isCreator || isAdmin
   const myClaim = claims.find((c) => c.profile_id === userId)
+  // премия Пушкаша и волчья малина по турнирам — из бонусов рейтинга
+  const awards = new Map<string, Set<string>>()
+  for (const b of data.ratings?.ratings.get(p.id)?.bonuses ?? []) {
+    awards.set(b.tournament_id, (awards.get(b.tournament_id) ?? new Set()).add(b.kind))
+  }
 
   async function claim() {
     try {
@@ -184,6 +189,8 @@ export default function PlayerPage() {
                     {h.tournament.name}
                     {data.perTournament.get(h.tournament.id)?.titles ? ' 🏆' : ''}
                     {data.perTournament.get(h.tournament.id)?.mvp ? ' ⭐' : ''}
+                    {awards.get(h.tournament.id)?.has('puskas') ? ' 🎯' : ''}
+                    {awards.get(h.tournament.id)?.has('razzie') ? ' 🍓' : ''}
                   </div>
                   <div className="row-sub">
                     {h.team.name}
