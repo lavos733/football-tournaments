@@ -54,6 +54,7 @@ export default function PlayerPage() {
     ])
     return {
       ratings,
+      awards: await loadAwards(id!),
       career: career as PlayerCareerStats | null,
       perTournament: new Map((perTournament as PlayerTournamentStats[]).map((s) => [s.tournament_id, s])),
       player: player as PlayerRow,
@@ -71,11 +72,7 @@ export default function PlayerPage() {
   const canEdit = isCreator || p.linked_profile_id === userId || isAdmin
   const canDecideClaims = isCreator || isAdmin
   const myClaim = claims.find((c) => c.profile_id === userId)
-  // премия Пушкаша и волчья малина по турнирам — из бонусов рейтинга
-  const awards = new Map<string, Set<string>>()
-  for (const b of data.ratings?.ratings.get(p.id)?.bonuses ?? []) {
-    awards.set(b.tournament_id, (awards.get(b.tournament_id) ?? new Set()).add(b.kind))
-  }
+  const { awards } = data
 
   async function claim() {
     try {
@@ -174,7 +171,7 @@ export default function PlayerPage() {
         </Section>
       )}
 
-      <CareerStats s={data.career} isKeeper={p.position === 'GK' || p.position === 'UNI'} />
+      <CareerStats s={data.career} awards={awards} isKeeper={p.position === 'GK' || p.position === 'UNI'} />
 
       <Section title={`Турниры · ${history.length}`}>
         {history.length === 0 ? (
@@ -189,8 +186,8 @@ export default function PlayerPage() {
                     {h.tournament.name}
                     {data.perTournament.get(h.tournament.id)?.titles ? ' 🏆' : ''}
                     {data.perTournament.get(h.tournament.id)?.mvp ? ' ⭐' : ''}
-                    {awards.get(h.tournament.id)?.has('puskas') ? ' 🎯' : ''}
-                    {awards.get(h.tournament.id)?.has('razzie') ? ' 🍓' : ''}
+                    {awards.puskas.has(h.tournament.id) ? ' 🎯' : ''}
+                    {awards.razzie.has(h.tournament.id) ? ' 🍓' : ''}
                   </div>
                   <div className="row-sub">
                     {h.team.name}
@@ -232,7 +229,7 @@ export default function PlayerPage() {
   )
 }
 
-function CareerStats({ s, isKeeper }: { s: PlayerCareerStats | null; isKeeper: boolean }) {
+function CareerStats({ s, awards, isKeeper }: { s: PlayerCareerStats | null; awards: Awards; isKeeper: boolean }) {
   if (!s || (s.matches === 0 && s.goals === 0 && s.assists === 0)) {
     return (
       <Section title="Статистика">
@@ -254,6 +251,8 @@ function CareerStats({ s, isKeeper }: { s: PlayerCareerStats | null; isKeeper: b
         <Stat label="Турниры" value={s.tournaments} />
         <Stat label="🏆 Выиграно турниров" value={s.titles} />
         <Stat label="⭐ Лучший игрок турнира" value={s.mvp} />
+        <Stat label="🎯 Премия Пушкаша" value={awards.puskas.size} />
+        <Stat label="🍓 Волчья малина" value={awards.razzie.size} />
         <Stat label="Победы в матчах" value={`${winRate}%`} />
         <Stat label="В-Н-П" value={`${s.wins}-${s.draws}-${s.losses}`} />
         <Stat label="🟨 Жёлтые" value={s.yellow_cards} />
@@ -270,6 +269,34 @@ function CareerStats({ s, isKeeper }: { s: PlayerCareerStats | null; isKeeper: b
       {s.own_goals > 0 && <p className="muted small">Автоголы: {s.own_goals}</p>}
     </Section>
   )
+}
+
+/** В каких турнирах игрок получил «Премию Пушкаша» (лучший гол) и «Волчью малину» (худший игрок) */
+interface Awards {
+  puskas: Set<string>
+  razzie: Set<string>
+}
+
+async function loadAwards(playerId: string): Promise<Awards> {
+  try {
+    const rows = await q<{ id: string; worst_player_id: string | null; best_goal_event_id: string | null }[]>(
+      supabase.from('tournaments').select('id, worst_player_id, best_goal_event_id').or(`worst_player_id.eq.${playerId},best_goal_event_id.not.is.null`),
+    )
+    const goals = rows.filter((r) => r.best_goal_event_id)
+    const mine = goals.length
+      ? await q<{ id: string }[]>(
+          supabase.from('match_events').select('id').eq('player_id', playerId).in('id', goals.map((r) => r.best_goal_event_id!)),
+        )
+      : []
+    const myGoals = new Set(mine.map((e) => e.id))
+    return {
+      puskas: new Set(goals.filter((r) => myGoals.has(r.best_goal_event_id!)).map((r) => r.id)),
+      razzie: new Set(rows.filter((r) => r.worst_player_id === playerId).map((r) => r.id)),
+    }
+  } catch {
+    // до миграции 016 полей нет — наград просто не показываем
+    return { puskas: new Set(), razzie: new Set() }
+  }
 }
 
 function Stat({ label, value }: { label: string; value: number | string }) {
