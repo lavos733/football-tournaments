@@ -1376,11 +1376,18 @@ select {
 }
 
 /* ---- шансы на победу (П1 / Н / П2) ---- */
+:root {
+  --wp-draw: #9aa4ab;
+}
 .wp {
+  padding: 0;
+  overflow: hidden;
+}
+.wp-main {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 2px;
+  padding: 12px 12px 8px;
 }
 .wp-clickable {
   cursor: pointer;
@@ -1388,81 +1395,132 @@ select {
 .wp-head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-}
-.wp-title {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--muted);
-}
-.wp-head .muted {
-  margin-left: auto;
-}
-.wp-chevron {
-  margin-left: auto;
-  color: var(--muted);
-}
-.wp-head .muted + .wp-chevron {
-  margin-left: 0;
-}
-.wp-bar {
-  display: flex;
-  height: 8px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--muted-bg);
-}
-.wp-bar i {
-  display: block;
-  height: 100%;
-  transition: width 0.6s ease;
-}
-.wp-bar .wp-draw,
-.wp-chart-draw {
-  background: var(--muted-bg);
-  fill: var(--muted-bg);
-}
-.wp-labels {
-  display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 13px;
+  margin-bottom: 4px;
 }
-.wp-labels span {
+.wp-title {
+  font-weight: 700;
+  font-size: 15px;
+}
+.wp-caption {
+  font-size: 12px;
+  color: var(--muted);
+}
+.wp-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.wp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(60px, 96px) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+}
+.wp-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.wp-chart {
+.wp-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.wp-spark svg {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+.wp-value {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 4px;
-  cursor: default;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+.wp-pill {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: var(--muted-bg);
+}
+.wp-pill.wp-up {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+}
+.wp-pill.wp-down {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.wp-delta {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wp-up {
+  color: var(--ok);
+}
+.wp-down {
+  color: var(--danger);
+}
+.wp-flat {
+  color: var(--muted);
+}
+.wp-chart {
+  padding: 4px 8px 0;
+  border-top: 1px solid var(--line);
 }
 .wp-chart svg {
   display: block;
   width: 100%;
-  height: 120px;
-  border-radius: 6px;
+  height: auto;
 }
-.wp-chart-mid {
-  stroke: var(--card);
+.wp-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.wp-axis {
+  font-size: 10px;
+  fill: var(--muted);
+}
+.wp-goal {
+  stroke: var(--muted);
   stroke-width: 1;
   stroke-dasharray: 3 3;
-  opacity: 0.8;
-  vector-effect: non-scaling-stroke;
 }
-.wp-chart-goal {
-  stroke: var(--text);
-  stroke-width: 1;
-  stroke-dasharray: 2 3;
-  opacity: 0.6;
-  vector-effect: non-scaling-stroke;
+.wp-goal-icon {
+  font-size: 10px;
 }
-.wp-chart-axis {
+.wp-foot {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--muted-bg) 35%, transparent);
+}
+.wp-moment {
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-toggle {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
 }
