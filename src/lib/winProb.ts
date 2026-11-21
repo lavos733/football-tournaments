@@ -24,6 +24,13 @@ const TEMPERATURE_FADE = 0.1
  * против 24 у отдохнувших соперников.
  */
 const FATIGUE_POINTS = 15
+/**
+ * Меньшинство после красной карточки (удаление на 2 минуты): во сколько раз меняется темп голов.
+ * Истории у нас нет (красных почти не было) — взяты оценки по футзалу: в меньшинстве забивают
+ * заметно реже, большинство забивает почти вдвое чаще.
+ */
+const MAN_DOWN_ATTACK = 0.6
+const MAN_UP_ATTACK = 1.8
 /** Пока матч не завершён, гол возможен и на последней секунде — оставляем крошечный шанс (≈0,3% на гол) */
 const MIN_REMAINING_SHARE = 0.005
 
@@ -36,11 +43,24 @@ export interface Outcome {
 /** Кто играет второй матч подряд: 1 — хозяева, −1 — гости, 0 — никто (или обе) */
 export type Fatigue = 1 | 0 | -1
 
+/** Кто сейчас в меньшинстве: side 1 — хозяева, −1 — гости; until — секунда конца удаления */
+export interface ManDown {
+  side: 1 | -1
+  until: number
+}
+
+/** Удаление на графике: чья команда и с какой по какую секунду в меньшинстве */
+export interface SuspensionWindow {
+  home: boolean
+  start: number
+  end: number
+}
+
 /**
  * Ожидаемые голы хозяев и гостей до конца матча, если прошла доля времени f (0–1).
  * Время делится на пятые части: в каждой свой темп голов и свой штраф за усталость.
  */
-function remainingGoals(f: number, diff: number, fatigue: Fatigue, matchSeconds: number): [number, number] {
+function rawRemainingGoals(f: number, diff: number, fatigue: Fatigue, matchSeconds: number): [number, number] {
   const total = GOALS_PER_TEAM_MINUTE * (matchSeconds / 60)
   let home = 0
   let away = 0
@@ -55,8 +75,24 @@ function remainingGoals(f: number, diff: number, fatigue: Fatigue, matchSeconds:
     home += base * shift
     away += base / shift
   })
+  return [home, away]
+}
+
+/** То же с учётом меньшинства и «последней секунды» */
+function remainingGoals(f: number, diff: number, fatigue: Fatigue, matchSeconds: number, manDown?: ManDown): [number, number] {
+  let [home, away] = rawRemainingGoals(f, diff, fatigue, matchSeconds)
+  if (manDown) {
+    // голы, которые пришлись бы на оставшееся время удаления, — с поправкой на меньшинство
+    const fEnd = Math.min(1, Math.max(f, manDown.until / matchSeconds))
+    const [h2, a2] = rawRemainingGoals(fEnd, diff, fatigue, matchSeconds)
+    const [wh, wa] = [home - h2, away - a2]
+    const homeMult = manDown.side === 1 ? MAN_DOWN_ATTACK : MAN_UP_ATTACK
+    const awayMult = manDown.side === 1 ? MAN_UP_ATTACK : MAN_DOWN_ATTACK
+    home += wh * (homeMult - 1)
+    away += wa * (awayMult - 1)
+  }
   // гол возможен и на последней секунде, пока матч не завершён
-  const floor = total * MIN_REMAINING_SHARE
+  const floor = GOALS_PER_TEAM_MINUTE * (matchSeconds / 60) * MIN_REMAINING_SHARE
   return [Math.max(home, floor), Math.max(away, floor)]
 }
 
@@ -72,11 +108,20 @@ function poisson(mu: number, k: number): number {
  * @param lead текущий перевес хозяев в голах
  * @param elapsed сколько секунд прошло; matchSeconds — длина матча
  * @param fatigue кто играет второй матч подряд
+ * @param manDown кто сейчас в меньшинстве после красной карточки
  */
-export function winProbability(diff: number, lead: number, elapsed: number, matchSeconds: number, fatigue: Fatigue = 0, finished = false): Outcome {
+export function winProbability(
+  diff: number,
+  lead: number,
+  elapsed: number,
+  matchSeconds: number,
+  fatigue: Fatigue = 0,
+  finished = false,
+  manDown?: ManDown,
+): Outcome {
   if (finished) return lead > 0 ? { home: 1, draw: 0, away: 0 } : lead < 0 ? { home: 0, draw: 0, away: 1 } : { home: 0, draw: 1, away: 0 }
   const f = Math.min(1, Math.max(0, elapsed / matchSeconds))
-  const [muHome, muAway] = remainingGoals(f, diff, fatigue, matchSeconds)
+  const [muHome, muAway] = remainingGoals(f, diff, fatigue, matchSeconds, manDown)
   let home = 0
   let draw = 0
   let away = 0
@@ -113,6 +158,7 @@ export function probabilityTimeline(
   untilSec: number,
   matchSeconds: number,
   finished: boolean,
+  windows: SuspensionWindow[] = [],
 ): ProbPoint[] {
   const sorted = [...goals].sort((a, b) => a.sec - b.sec)
   const leadAt = (sec: number) => sorted.filter((g) => g.sec <= sec).reduce((s, g) => s + (g.home ? 1 : -1), 0)
@@ -122,9 +168,20 @@ export function probabilityTimeline(
     if (g.sec > 0) secs.add(g.sec - 0.001)
     secs.add(g.sec)
   }
+  // излом графика в начале и в конце удаления
+  for (const w of windows) {
+    secs.add(w.start)
+    secs.add(w.end)
+  }
   secs.add(untilSec)
   return [...secs]
     .filter((s) => s <= untilSec)
     .sort((a, b) => a - b)
-    .map((sec) => ({ sec, ...winProbability(diff, leadAt(sec), sec, matchSeconds, fatigue, finished && sec === untilSec) }))
+    .map((sec) => ({ sec, ...winProbability(diff, leadAt(sec), sec, matchSeconds, fatigue, finished && sec === untilSec, manDownAt(windows, sec)) }))
+}
+
+/** Кто в меньшинстве на секунде sec */
+export function manDownAt(windows: SuspensionWindow[], sec: number): ManDown | undefined {
+  const w = windows.find((x) => x.start <= sec && sec < x.end)
+  return w ? { side: w.home ? 1 : -1, until: w.end } : undefined
 }

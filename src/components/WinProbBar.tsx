@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { probabilityTimeline, winProbability, type Fatigue, type Outcome, type ProbPoint } from '../lib/winProb'
+import { manDownAt, probabilityTimeline, winProbability, type Fatigue, type Outcome, type ProbPoint, type SuspensionWindow } from '../lib/winProb'
 import type { MatchStatus } from '../lib/types'
 
 type Side = { name: string; color: string }
@@ -30,6 +30,7 @@ export function WinProbBar({
   status,
   lead,
   goals,
+  windows,
   matchSeconds,
   timerLeft,
   timerSince,
@@ -46,6 +47,8 @@ export function WinProbBar({
   lead: number
   /** голы со временем; null — у части голов нет времени, графика не будет */
   goals: Goal[] | null
+  /** удаления после красных: кто и когда в меньшинстве */
+  windows: SuspensionWindow[]
   matchSeconds: number
   timerLeft: number | null
   timerSince: string | null
@@ -71,7 +74,7 @@ export function WinProbBar({
   const live = status === 'live'
   const finished = status === 'finished'
   const preRaw = winProbability(diff, 0, 0, matchSeconds, fatigue)
-  const curRaw = status === 'scheduled' ? preRaw : winProbability(diff, lead, now ?? 0, matchSeconds, fatigue, finished)
+  const curRaw = status === 'scheduled' ? preRaw : winProbability(diff, lead, now ?? 0, matchSeconds, fatigue, finished, manDownAt(windows, now ?? 0))
   const pre = percents(preRaw)
   const cur = percents(curRaw)
   /** подпись процента: пока исход не решён, не показываем ровно 0 или 100 */
@@ -80,7 +83,7 @@ export function WinProbBar({
   // график: во время матча — до текущей секунды, после — до финального свистка (или гола в добавленное время)
   const goalSecs = (goals ?? []).map((g) => g.sec)
   const until = finished ? Math.max(matchSeconds - (timerLeft ?? 0), ...goalSecs) : live ? Math.max(now ?? 0, ...goalSecs) : 0
-  const points = status !== 'scheduled' && goals != null && until > 0 ? probabilityTimeline(diff, fatigue, goals, until, matchSeconds, finished) : null
+  const points = status !== 'scheduled' && goals != null && until > 0 ? probabilityTimeline(diff, fatigue, goals, until, matchSeconds, finished, windows) : null
 
   const rows: { key: Key; name: string; color: string }[] = [
     { key: 'home', name: home.name, color: home.color },
@@ -109,6 +112,9 @@ export function WinProbBar({
             {points && <span className="wp-chevron">{open ? ' ▴' : ' ▾'}</span>}
           </span>
         </div>
+        {live && manDownAt(windows, now ?? 0) && (
+          <div className="wp-note">🟥 {manDownAt(windows, now ?? 0)!.side === 1 ? home.name : away.name} в меньшинстве — шансы с учётом удаления</div>
+        )}
         {fatigue !== 0 && <div className="wp-note">🥵 {fatigue === 1 ? home.name : away.name} — второй матч подряд, к концу силы проседают</div>}
         {!open ? (
           <>

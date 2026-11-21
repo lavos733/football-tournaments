@@ -1554,3 +1554,34 @@ select {
   color: var(--muted);
   cursor: pointer;
 }
+
+/* ---- удаления после красной карточки ---- */
+.suspensions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-left: 4px solid var(--danger);
+}
+.suspension {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.suspension-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suspension-clock {
+  flex-shrink: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}

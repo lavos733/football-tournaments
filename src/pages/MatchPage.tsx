@@ -7,7 +7,8 @@ import { POS_SHORT, fullName } from '../lib/format'
 import { useQuery } from '../lib/hooks'
 import { loadRatings, teamAverage } from '../lib/ratingData'
 import { q, supabase } from '../lib/supabase'
-import { beepFinal } from '../lib/sound'
+import { beepFinal, beepReturn } from '../lib/sound'
+import { SUSPENSION_SECONDS, elapsedSeconds, suspensions, type Suspension } from '../lib/suspensions'
 import { confirmAction, guardClosing, haptic } from '../lib/telegram'
 import { toast, toastError } from '../lib/toast'
 import type { Match, MatchEvent, MatchGkChange, MatchGoalkeeper, MatchStatus, Player, RosterEntry, Tournament, TournamentTeam } from '../lib/types'
@@ -157,6 +158,9 @@ export default function MatchPage() {
   const prevMatch = data.schedule[data.schedule.findIndex((x) => x.id === m.id) - 1]
   const playedPrev = (teamId: string) => Boolean(prevMatch && (prevMatch.home_team_id === teamId || prevMatch.away_team_id === teamId))
   const fatigue = ((playedPrev(home.id) ? 1 : 0) - (playedPrev(away.id) ? 1 : 0)) as 1 | 0 | -1
+  // удаления после красных: отсчёт под таймером и меньшинство в шансах на победу
+  const susp = suspensions(events)
+  const suspWindows = susp.map((x) => ({ home: x.team_id === home.id, start: x.start, end: x.end }))
   const goalTimes = events.filter((e) => e.type === 'goal' || e.type === 'own_goal')
   const timedGoals = goalTimes.every((e) => e.match_second != null)
     ? goalTimes.map((e) => ({ sec: e.match_second!, home: e.team_id === home.id }))
@@ -300,6 +304,19 @@ export default function MatchPage() {
         />
       )}
 
+      {m.status === 'live' && susp.length > 0 && (
+        <SuspensionList
+          items={susp}
+          nameOf={nameOf}
+          teamOf={(teamId) => (teamId === home.id ? home : away)}
+          matchSeconds={t.match_minutes * 60}
+          timerLeft={m.timer_left}
+          timerSince={m.timer_since}
+          clockSkew={data.clockSkew}
+          judge={canEdit}
+        />
+      )}
+
       {canAddEvents && (
         <div className="event-buttons">
           {[home, away].map((team) => (
@@ -370,6 +387,7 @@ export default function MatchPage() {
           status={m.status}
           lead={(m.home_score ?? 0) - (m.away_score ?? 0)}
           goals={timedGoals}
+          windows={suspWindows}
           matchSeconds={t.match_minutes * 60}
           timerLeft={m.timer_left}
           timerSince={m.timer_since}
@@ -506,7 +524,12 @@ export default function MatchPage() {
           onClose={() => setAdding(null)}
           onSubmit={async (ev) => {
             setAdding(null)
-            await run(() => q(supabase.from('match_events').insert({ match_id: m.id, match_second: adding.second, ...ev })))
+            const row = { match_id: m.id, match_second: adding.second, ...ev }
+            // вторая жёлтая игроку в матче — сразу и красная: удаление на 2 минуты
+            const secondYellow = ev.type === 'yellow' && ev.player_id != null && events.some((e) => e.type === 'yellow' && e.player_id === ev.player_id)
+            await run(() => q(supabase.from('match_events').insert(secondYellow ? [row, { ...row, type: 'red' }] : row)))
+            if (secondYellow) toast(`Вторая жёлтая — ${nameOf(ev.player_id)} удалён на 2 минуты`)
+            else if (ev.type === 'red') toast(`${nameOf(ev.player_id)} удалён на 2 минуты`)
           }}
         />
       )}
@@ -629,6 +652,77 @@ function MatchTimer({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Идущие удаления под таймером: обратный отсчёт по матчевому времени (на паузе стоит).
+ * Когда удаление кончилось (время вышло или команда пропустила) — вибрация, у судьи ещё и сигнал.
+ */
+function SuspensionList({
+  items,
+  nameOf,
+  teamOf,
+  matchSeconds,
+  timerLeft,
+  timerSince,
+  clockSkew,
+  judge,
+}: {
+  items: Suspension[]
+  nameOf(pid: string | null): string
+  teamOf(teamId: string): TournamentTeam
+  matchSeconds: number
+  timerLeft: number | null
+  timerSince: string | null
+  clockSkew: number
+  judge: boolean
+}) {
+  const calc = () => elapsedSeconds(timerLeft, timerSince, clockSkew, matchSeconds)
+  const [now, setNow] = useState(calc)
+  useEffect(() => {
+    setNow(calc())
+    if (!timerSince) return
+    const t = setInterval(() => setNow(calc()), 250)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timerLeft, timerSince, clockSkew, matchSeconds])
+
+  const active = now == null ? [] : items.filter((x) => x.start <= now && now < x.end)
+  // кто только что вернулся — сравниваем с прошлым состоянием
+  const prev = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const ids = new Set(active.map((x) => x.event_id))
+    if (prev.current) {
+      for (const id of prev.current) {
+        if (ids.has(id)) continue
+        const s = items.find((x) => x.event_id === id)
+        if (!s) continue
+        haptic('warning')
+        if (judge) beepReturn()
+        toast(`${nameOf(s.player_id)} может вернуться на поле${s.endedByGoal ? ' — команда пропустила' : ''}`)
+      }
+    }
+    prev.current = ids
+  })
+
+  if (active.length === 0) return null
+  return (
+    <div className="card suspensions">
+      {active.map((x) => {
+        const left = Math.max(0, x.start + SUSPENSION_SECONDS - now!)
+        const team = teamOf(x.team_id)
+        return (
+          <div key={x.event_id} className="suspension">
+            <span className="suspension-who">
+              🟥 <b>{nameOf(x.player_id)}</b> <TeamBadge color={team.color} /> {team.name}
+            </span>
+            <span className="suspension-clock">{formatClock(left)}</span>
+          </div>
+        )
+      })}
+      <div className="muted small">Удаление: команда в меньшинстве 2 минуты или до пропущенного гола</div>
     </div>
   )
 }

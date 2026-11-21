@@ -36,3 +36,24 @@ export function beepFinal() {
     osc.stop(t + 0.7)
   }
 }
+
+/** Конец удаления: два коротких сигнала потише — игрок может вернуться на поле. */
+export function beepReturn() {
+  const ac = audio()
+  if (!ac) return
+  const start = ac.currentTime + 0.05
+  for (let i = 0; i < 2; i++) {
+    const t = start + i * 0.25
+    const osc = ac.createOscillator()
+    const gain = ac.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = 1400
+    gain.gain.setValueAtTime(0, t)
+    gain.gain.linearRampToValueAtTime(0.2, t + 0.01)
+    gain.gain.setValueAtTime(0.2, t + 0.12)
+    gain.gain.linearRampToValueAtTime(0, t + 0.14)
+    osc.connect(gain).connect(ac.destination)
+    osc.start(t)
+    osc.stop(t + 0.2)
+  }
+}
