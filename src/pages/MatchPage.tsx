@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Avatar, ErrorBox, Field, Loading, Page, Section, Sheet, TeamBadge } from '../components/ui'
+import { WinProbBar } from '../components/WinProbBar'
 import { useAuth } from '../lib/auth'
 import { POS_SHORT, fullName } from '../lib/format'
 import { useQuery } from '../lib/hooks'
+import { loadRatings, teamAverage } from '../lib/ratingData'
 import { q, supabase } from '../lib/supabase'
 import { beepFinal } from '../lib/sound'
 import { confirmAction, guardClosing, haptic } from '../lib/telegram'
@@ -44,7 +46,7 @@ export default function MatchPage() {
       q(supabase.from('match_events').select('*').eq('match_id', matchId!).order('created_at')),
       q(supabase.from('match_goalkeepers').select('*').eq('match_id', matchId!)),
       q(supabase.from('match_absences').select('player_id').eq('match_id', matchId!)),
-      q(supabase.from('matches').select('id, status').eq('tournament_id', id!).order('matchday').order('position')),
+      q(supabase.from('matches').select('id, status, home_team_id, away_team_id').eq('tournament_id', id!).order('matchday').order('position')),
       q(supabase.rpc('server_now')).catch(() => null),
       // вратари всех матчей турнира — чтобы при нескольких вратарях в составе взять того, кто стоял в прошлый раз
       q(
@@ -67,13 +69,16 @@ export default function MatchPage() {
       events: events as MatchEvent[],
       gks: gks as MatchGoalkeeper[],
       absent: new Set((absences as { player_id: string }[]).map((a) => a.player_id)),
-      schedule: schedule as Pick<Match, 'id' | 'status'>[],
+      schedule: schedule as Pick<Match, 'id' | 'status' | 'home_team_id' | 'away_team_id'>[],
       tournamentGks: tournamentGks as unknown as MatchGoalkeeper[],
       gkChanges: gkChanges as MatchGkChange[],
       clockSkew,
     }
     // зрители видят счёт и таймер без перезахода: идущий матч — чаще, остальные матчи турнира — реже
   }, [id, matchId], { refreshMs: (d) => (d.m.status === 'live' ? 5_000 : d.t.status === 'active' ? 15_000 : undefined) })
+
+  // рейтинги для шансов на победу: грузим один раз (и заново, когда матч завершён — он попадает в историю)
+  const ratingsQ = useQuery(() => loadRatings(), [matchId, data?.m.status === 'finished'])
 
   // судья ведёт матч: случайный свайп вниз не должен закрыть приложение
   const judging =
@@ -130,6 +135,32 @@ export default function MatchPage() {
     return { ...x, keeper: set ?? suggested, suggested: Boolean(suggested) }
   })
   const missingKeeper = sides.filter((x) => !x.keeper)
+
+  // разница средних рейтингов (хозяева − гости): завершённый матч — как было перед ним, иначе — текущие рейтинги сыгравших
+  const winDiff = (() => {
+    const ratings = ratingsQ.data?.ratings
+    if (!ratings) return null
+    if (m.status === 'finished') {
+      for (const [list, sign] of [[homeRoster, 1], [awayRoster, -1]] as const) {
+        for (const r of list) {
+          const c = ratings.get(r.player_id)?.history.find((h) => h.match_id === m.id)
+          if (c) return sign * (c.team_avg - c.opp_avg)
+        }
+      }
+      return null
+    }
+    const h = teamAverage(ratings, sides[0]!.list.map((r) => r.player_id))
+    const a = teamAverage(ratings, sides[1]!.list.map((r) => r.player_id))
+    return h != null && a != null ? h - a : null
+  })()
+  // кто играл предыдущий матч по расписанию — у того к концу меньше сил
+  const prevMatch = data.schedule[data.schedule.findIndex((x) => x.id === m.id) - 1]
+  const playedPrev = (teamId: string) => Boolean(prevMatch && (prevMatch.home_team_id === teamId || prevMatch.away_team_id === teamId))
+  const fatigue = ((playedPrev(home.id) ? 1 : 0) - (playedPrev(away.id) ? 1 : 0)) as 1 | 0 | -1
+  const goalTimes = events.filter((e) => e.type === 'goal' || e.type === 'own_goal')
+  const timedGoals = goalTimes.every((e) => e.match_second != null)
+    ? goalTimes.map((e) => ({ sec: e.match_second!, home: e.team_id === home.id }))
+    : null
 
   /**
    * Сколько секунд прошло с начала матча прямо сейчас — по тому же таймеру, что на экране.
@@ -266,6 +297,22 @@ export default function MatchPage() {
           controls={canEdit && m.status === 'live'}
           busy={busy}
           onAction={timer}
+        />
+      )}
+
+      {winDiff != null && (
+        <WinProbBar
+          home={home}
+          away={away}
+          diff={winDiff}
+          fatigue={fatigue}
+          status={m.status}
+          lead={(m.home_score ?? 0) - (m.away_score ?? 0)}
+          goals={timedGoals}
+          matchSeconds={t.match_minutes * 60}
+          timerLeft={m.timer_left}
+          timerSince={m.timer_since}
+          clockSkew={data.clockSkew}
         />
       )}
 
