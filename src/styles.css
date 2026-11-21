@@ -1412,6 +1412,36 @@ select {
   color: var(--muted);
   margin-bottom: 4px;
 }
+.wp-chevron {
+  color: var(--muted);
+}
+.wp-bar {
+  display: flex;
+  height: 8px;
+  margin: 4px 0 2px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--muted-bg);
+}
+.wp-bar i {
+  display: block;
+  height: 100%;
+  transition: width 0.6s ease;
+}
+.wp-bar i + i {
+  border-left: 2px solid var(--card);
+}
+.wp-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.wp-labels span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .wp-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(60px, 96px) auto;

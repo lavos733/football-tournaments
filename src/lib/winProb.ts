@@ -12,14 +12,16 @@ const RATING_WEIGHT = 0.5
 const RATING_SCALE = 20
 /** Сглаживание уверенности: в 5-минутных матчах у нас много камбэков, «чистая» модель переоценивает лидера */
 const TEMPERATURE = 1.5
+/** За сколько до конца (доля матча) сглаживание начинает сходить на нет: к финальной секунде исход почти решён */
+const TEMPERATURE_FADE = 0.1
 /**
  * Усталость: команда, сыгравшая предыдущий матч подряд, к концу матча играет как на столько пунктов
  * рейтинга слабее (штраф растёт равномерно с первой секунды). По истории такие команды выигрывали 17 из 56
  * против 24 у отдохнувших соперников.
  */
 const FATIGUE_POINTS = 15
-/** Пока матч не завершён, гол возможен и на последней секунде — оставляем крошечный шанс */
-const MIN_REMAINING_SHARE = 0.02
+/** Пока матч не завершён, гол возможен и на последней секунде — оставляем крошечный шанс (≈0,3% на гол) */
+const MIN_REMAINING_SHARE = 0.005
 
 export interface Outcome {
   home: number
@@ -84,7 +86,9 @@ export function winProbability(diff: number, lead: number, elapsed: number, matc
       else away += p
     }
   }
-  const [h, d, a] = [home, draw, away].map((x) => Math.pow(x, 1 / TEMPERATURE))
+  // в последние ~30 секунд сглаживание плавно уходит: на 0:00 при равном счёте ничья ≈ 99%
+  const temperature = 1 + (TEMPERATURE - 1) * Math.min(1, (1 - f) / TEMPERATURE_FADE)
+  const [h, d, a] = [home, draw, away].map((x) => Math.pow(x, 1 / temperature))
   const sum = h + d + a
   return { home: h / sum, draw: d / sum, away: a / sum }
 }

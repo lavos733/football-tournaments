@@ -70,8 +70,12 @@ export function WinProbBar({
 
   const live = status === 'live'
   const finished = status === 'finished'
-  const pre = percents(winProbability(diff, 0, 0, matchSeconds, fatigue))
-  const cur = percents(status === 'scheduled' ? winProbability(diff, 0, 0, matchSeconds, fatigue) : winProbability(diff, lead, now ?? 0, matchSeconds, fatigue, finished))
+  const preRaw = winProbability(diff, 0, 0, matchSeconds, fatigue)
+  const curRaw = status === 'scheduled' ? preRaw : winProbability(diff, lead, now ?? 0, matchSeconds, fatigue, finished)
+  const pre = percents(preRaw)
+  const cur = percents(curRaw)
+  /** подпись процента: пока исход не решён, не показываем ровно 0 или 100 */
+  const label = (o: Outcome, raw: Outcome, k: Key) => (o[k] === 0 && raw[k] > 0 ? '<1' : o[k] === 100 && raw[k] < 1 ? '>99' : String(o[k]))
 
   // график: во время матча — до текущей секунды, после — до финального свистка (или гола в добавленное время)
   const goalSecs = (goals ?? []).map((g) => g.sec)
@@ -84,7 +88,11 @@ export function WinProbBar({
     { key: 'away', name: away.name, color: away.color },
   ]
   const moment = points && goals ? turningPoint(points, goals, home, away) : null
-  const caption = status === 'scheduled' ? 'прогноз' : live ? 'до матча → сейчас' : 'до матча → итог'
+  // свёрнуто: полоса — до матча и после него прогноз до начала, во время — текущие шансы
+  const bar = live ? cur : pre
+  const barRaw = live ? curRaw : preRaw
+  const barCaption = status === 'scheduled' ? 'прогноз' : live ? 'сейчас' : 'до начала матча'
+  const caption = live ? 'до матча → сейчас' : 'до матча → итог'
 
   return (
     <div className="card wp">
@@ -96,51 +104,70 @@ export function WinProbBar({
       >
         <div className="wp-head">
           <span className="wp-title">Шансы на победу</span>
-          <span className="wp-caption">{caption}</span>
+          <span className="wp-caption">
+            {open ? caption : barCaption}
+            {points && <span className="wp-chevron">{open ? ' ▴' : ' ▾'}</span>}
+          </span>
         </div>
         {fatigue !== 0 && <div className="wp-note">🥵 {fatigue === 1 ? home.name : away.name} — второй матч подряд, к концу силы проседают</div>}
-        {rows.map((r) => {
-          const delta = cur[r.key] - pre[r.key]
-          const tone = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
-          return (
-            <div key={r.key} className="wp-row">
-              <span className="wp-name">
-                <i className="wp-dot" style={{ background: r.color }} />
-                {r.name}
+        {!open ? (
+          <>
+            <div className="wp-bar">
+              <i style={{ width: `${bar.home}%`, background: home.color }} />
+              <i style={{ width: `${bar.draw}%`, background: 'var(--wp-draw)' }} />
+              <i style={{ width: `${bar.away}%`, background: away.color }} />
+            </div>
+            <div className="wp-labels">
+              <span>
+                {home.name} <b>{label(bar, barRaw, 'home')}%</b>
               </span>
-              <span className="wp-spark">{points && <Sparkline points={points} k={r.key} color={r.color} />}</span>
-              <span className="wp-value">
-                {status === 'scheduled' ? (
-                  <b className="wp-pill">{cur[r.key]}%</b>
-                ) : (
-                  <>
-                    <b className={`wp-pill wp-${tone}`}>
-                      {pre[r.key]} → {cur[r.key]}%
-                    </b>
-                    <small className={`wp-delta wp-${tone}`}>{delta === 0 ? '±0' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`}</small>
-                  </>
-                )}
+              <span className="muted">
+                ничья <b>{label(bar, barRaw, 'draw')}%</b>
+              </span>
+              <span>
+                <b>{label(bar, barRaw, 'away')}%</b> {away.name}
               </span>
             </div>
-          )
-        })}
+          </>
+        ) : (
+          rows.map((r) => {
+            const delta = cur[r.key] - pre[r.key]
+            const tone = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
+            return (
+              <div key={r.key} className="wp-row">
+                <span className="wp-name">
+                  <i className="wp-dot" style={{ background: r.color }} />
+                  {r.name}
+                </span>
+                <span className="wp-spark">{points && <Sparkline points={points} k={r.key} color={r.color} />}</span>
+                <span className="wp-value">
+                  <b className={`wp-pill wp-${tone}`}>
+                    {label(pre, preRaw, r.key)} → {label(cur, curRaw, r.key)}%
+                  </b>
+                  <small className={`wp-delta wp-${tone}`}>{delta === 0 ? '±0' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`}</small>
+                </span>
+              </div>
+            )
+          })
+        )}
       </div>
 
-      {open && points && <BigChart points={points} rows={rows} goals={goals!} until={until} />}
-
-      {points && (
-        <div className="wp-foot">
-          {moment ? (
-            <span className="wp-moment">
-              Перелом: <b>⚽ {moment.time} {moment.team}</b> <span className="wp-up">+{moment.jump}%</span>
-            </span>
-          ) : (
-            <span className="muted small">{goals!.length === 0 ? 'Голов пока нет' : ''}</span>
-          )}
-          <button className="wp-toggle" onClick={() => setOpen((x) => !x)}>
-            {open ? 'Свернуть ▴' : 'График ▾'}
-          </button>
-        </div>
+      {open && points && (
+        <>
+          <BigChart points={points} rows={rows} goals={goals!} until={until} />
+          <div className="wp-foot">
+            {moment ? (
+              <span className="wp-moment">
+                Перелом: <b>⚽ {moment.time} {moment.team}</b> <span className="wp-up">+{moment.jump}%</span>
+              </span>
+            ) : (
+              <span className="muted small">{goals!.length === 0 ? 'Голов пока нет' : ''}</span>
+            )}
+            <button className="wp-toggle" onClick={() => setOpen(false)}>
+              Свернуть ▴
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
