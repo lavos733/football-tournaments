@@ -300,20 +300,34 @@ export default function MatchPage() {
         />
       )}
 
-      {winDiff != null && (
-        <WinProbBar
-          home={home}
-          away={away}
-          diff={winDiff}
-          fatigue={fatigue}
-          status={m.status}
-          lead={(m.home_score ?? 0) - (m.away_score ?? 0)}
-          goals={timedGoals}
-          matchSeconds={t.match_minutes * 60}
-          timerLeft={m.timer_left}
-          timerSince={m.timer_since}
-          clockSkew={data.clockSkew}
-        />
+      {canAddEvents && (
+        <div className="event-buttons">
+          {[home, away].map((team) => (
+            <div key={team.id} className="event-col">
+              <div className="event-col-title">
+                <TeamBadge color={team.color} /> {team.name}
+              </div>
+              <div className="event-col-btns">
+                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'goal', teamId: team.id, second: elapsedNow() })}>
+                  ⚽ Гол
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'yellow', teamId: team.id, second: elapsedNow() })}>
+                  🟨
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'red', teamId: team.id, second: elapsedNow() })}>
+                  🟥
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setChangingGk({ teamId: team.id, second: elapsedNow() })}
+                  aria-label="Замена вратаря"
+                >
+                  🧤
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {canEdit && (
@@ -347,34 +361,20 @@ export default function MatchPage() {
         </Link>
       )}
 
-      {canAddEvents && (
-        <div className="event-buttons">
-          {[home, away].map((team) => (
-            <div key={team.id} className="event-col">
-              <div className="event-col-title">
-                <TeamBadge color={team.color} /> {team.name}
-              </div>
-              <div className="event-col-btns">
-                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'goal', teamId: team.id, second: elapsedNow() })}>
-                  ⚽ Гол
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'yellow', teamId: team.id, second: elapsedNow() })}>
-                  🟨
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setAdding({ kind: 'red', teamId: team.id, second: elapsedNow() })}>
-                  🟥
-                </button>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setChangingGk({ teamId: team.id, second: elapsedNow() })}
-                  aria-label="Замена вратаря"
-                >
-                  🧤
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+      {winDiff != null && (
+        <WinProbBar
+          home={home}
+          away={away}
+          diff={winDiff}
+          fatigue={fatigue}
+          status={m.status}
+          lead={(m.home_score ?? 0) - (m.away_score ?? 0)}
+          goals={timedGoals}
+          matchSeconds={t.match_minutes * 60}
+          timerLeft={m.timer_left}
+          timerSince={m.timer_since}
+          clockSkew={data.clockSkew}
+        />
       )}
 
       {played_ && (
