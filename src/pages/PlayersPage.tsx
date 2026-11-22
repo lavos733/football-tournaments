@@ -23,8 +23,13 @@ export default function PlayersPage() {
 
   const list = useMemo(() => {
     const s = search.trim().toLowerCase()
-    const all = data?.players ?? []
-    return s ? all.filter((p) => fullName(p).toLowerCase().includes(s)) : all
+    const found = (data?.players ?? []).filter((p) => !s || fullName(p).toLowerCase().includes(s))
+    // по рейтингу сверху вниз; кто ещё не играл — в конце по алфавиту
+    const rating = (p: Player) => {
+      const r = data?.ratings?.get(p.id)
+      return r && r.matches > 0 ? r.rating : -Infinity
+    }
+    return [...found].sort((a, b) => rating(b) - rating(a) || fullName(a).localeCompare(fullName(b), 'ru'))
   }, [data, search])
 
   return (
