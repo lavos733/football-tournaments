@@ -10,6 +10,11 @@ export const RATING_MIN = 50
 export const RATING_MAX = 99
 /** Сколько первых матчей рейтинг калибруется (меняется сильнее) */
 export const CALIBRATION_MATCHES = 10
+/**
+ * Во сколько раз быстрее меняется рейтинг в первом матче (дальше множитель плавно спадает до 1).
+ * Было 2,5: новичок в сильной команде за один турнир взлетал в топ на одних командных победах.
+ */
+const CALIBRATION_BOOST = 1.75
 
 /** Разница рейтингов, при которой фаворит побеждает в ~91% случаев (аналог 400 в классическом ELO) */
 const SCALE = 20
@@ -251,7 +256,7 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
           const team = teamBase * mix('team')
           const penalties = PENALTY.yellow * yellow + PENALTY.red * red + PENALTY.own_goal * own
 
-          const calibration = pr.matches < CALIBRATION_MATCHES ? 1 + 1.5 * (1 - pr.matches / CALIBRATION_MATCHES) : 1
+          const calibration = pr.matches < CALIBRATION_MATCHES ? 1 + (CALIBRATION_BOOST - 1) * (1 - pr.matches / CALIBRATION_MATCHES) : 1
           const raw = clamp(team + personal + penalties, -MAX_DELTA, MAX_DELTA) * calibration
           updates.push([pid, raw, {
             match_id: m.id, tournament_id: t.id, opponent_team_id: sides[1 - i].team, role,

@@ -55,7 +55,7 @@ function RatingDetails({ rating: r, position, data }: { rating: PlayerRating; po
 
       {r.provisional && (
         <p className="ovr-note">
-          Предварительный рейтинг: до {CALIBRATION_MATCHES} матчей он меняется в 2–3 раза быстрее, чтобы быстрее найти ваш уровень.
+          Предварительный рейтинг: до {CALIBRATION_MATCHES} матчей он меняется до 1,75 раза быстрее, чтобы быстрее найти ваш уровень.
           {r.matches < CALIBRATION_MATCHES && ` Осталось ${CALIBRATION_MATCHES - r.matches}.`}
         </p>
       )}
