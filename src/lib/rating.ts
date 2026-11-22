@@ -25,6 +25,8 @@ const MAX_DELTA = 2.5
 const PENALTY = { yellow: -0.3, red: -1.0, own_goal: -0.6 }
 /** Награды по итогам турнира: MVP, победа, «Премия Пушкаша» (лучший гол), «Волчья малина» (худший игрок) */
 const BONUS = { mvp: 1.5, champion: 0.75, puskas: 0.5, razzie: -0.5 }
+/** Какая доля суммы наград списывается со всех участников турнира: гасит рост среднего рейтинга, но не полностью */
+const POOL_SHARE = 0.5
 
 /** Как роль весит компоненты матча */
 const ROLE: Record<MatchRole, { team: number; goal: number; assist: number; conceded: number; clean: number }> = {
@@ -63,7 +65,8 @@ export interface RatingChange {
 
 export interface TournamentBonus {
   tournament_id: string
-  kind: 'mvp' | 'champion' | 'puskas' | 'razzie'
+  /** pool — доля участника в общем списании наград турнира (награды в сумме дают ноль) */
+  kind: 'mvp' | 'champion' | 'puskas' | 'razzie' | 'pool'
   delta: number
 }
 
@@ -284,7 +287,7 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
     }
 
     if (t.status === 'finished') {
-      const bonus = (pid: string, kind: TournamentBonus['kind']) => {
+      const bonus = (pid: string, kind: keyof typeof BONUS) => {
         const pr = get(pid)
         const next = clamp(pr.rating + BONUS[kind], RATING_MIN, RATING_MAX)
         pr.bonuses.push({ tournament_id: t.id, kind, delta: next - pr.rating })
@@ -296,6 +299,22 @@ export function computeRatings(input: RatingInput): Map<string, PlayerRating> {
       const puskas = t.best_goal_event_id ? input.events.find((e) => e.id === t.best_goal_event_id)?.player_id : null
       if (puskas) bonus(puskas, 'puskas')
       if (t.worst_player_id) bonus(t.worst_player_id, 'razzie')
+      // часть суммы наград поровну списывается со всех участников турнира,
+      // иначе каждый турнир добавляет в систему ~5 очков и средний рейтинг быстро ползёт вверх
+      const given = [...out.values()].flatMap((r) => r.bonuses.filter((b) => b.tournament_id === t.id)).reduce((s, b) => s + b.delta, 0)
+      const field = [...new Set(input.roster.filter((r) => r.tournament_id === t.id).map((r) => r.player_id))].filter((pid) =>
+        get(pid).history.some((h) => h.tournament_id === t.id),
+      )
+      if (given !== 0 && field.length) {
+        const share = (-given * POOL_SHARE) / field.length
+        for (const pid of field) {
+          const pr = get(pid)
+          const next = clamp(pr.rating + share, RATING_MIN, RATING_MAX)
+          pr.bonuses.push({ tournament_id: t.id, kind: 'pool', delta: next - pr.rating })
+          pr.rating = next
+          pr.points.push(next)
+        }
+      }
     }
   }
 
